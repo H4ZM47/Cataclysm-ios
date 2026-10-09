@@ -126,6 +126,7 @@ files.
 | `ios/CMakeLists.txt` | Xcode project: game sources, SDL2 libraries, app bundle, game data |
 | `ios/src/ios_platform.mm` | iOS platform layer: paths, safe area, keyboard, haptics, keyboard button |
 | `ios/src/ios_autoplay.cpp` | Scripted input for automated tests |
+| `ios/scripts/copy-game-data.sh` | Build phase that copies `data/`, `gfx/` and translations into the app |
 | `ios/resources/` | `Info.plist`, app icon |
 | `scripts/` | Fetch, build, package and test scripts |
 | `tools/linux-harness/` | Desktop build of the iOS code paths for development without a Mac |
