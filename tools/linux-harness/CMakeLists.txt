@@ -4,7 +4,7 @@
 #
 #   cmake -S tools/linux-harness -B build/harness -G Ninja
 #   cmake --build build/harness
-#   cd cdda && ../build/harness/cataclysm-ios-harness
+#   tools/linux-harness/run.sh [--headless]
 cmake_minimum_required(VERSION 3.20)
 project(cataclysm_ios_harness LANGUAGES C CXX)
 

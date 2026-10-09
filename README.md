@@ -161,12 +161,13 @@ iOS Simulator and drives it with `CATA_AUTOPLAY` (see `ios/src/ios_autoplay.cpp`
 **smoke-test** artifact. `scripts/simulator-smoke-test.sh` runs the same test locally.
 
 `tools/linux-harness` builds the game for Linux with the iOS code paths enabled and a stand-in
-platform layer (simulated notch, keyboard and screen scale), which is handy for working on the
-layout and touch controls:
+platform layer (simulated notch, keyboard and screen scale). It runs the same layout, touch
+controls and autoplay hook as the app, which is handy for working on them without a Mac:
 
 ```sh
 cmake -S tools/linux-harness -B build/harness -G Ninja && cmake --build build/harness
-cd cdda && CATA_HARNESS_USER_DIR=/tmp/cdda-user/ ../build/harness/cataclysm-ios-harness
+tools/linux-harness/run.sh                       # in a window on the current display
+CATA_AUTOPLAY="idle=8;shot=menu" tools/linux-harness/run.sh --headless   # under Xvfb
 ```
 
 ## License
