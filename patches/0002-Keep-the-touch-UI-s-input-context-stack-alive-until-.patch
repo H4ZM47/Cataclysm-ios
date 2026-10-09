@@ -76,10 +76,10 @@ index 9d83ef7..aa2c8d7 100644
  
          // HACK: hack to allow creating manual keybindings for getch() instances, uilists etc. that don't use an input_context outside of the Android version
 diff --git a/src/sdltiles.cpp b/src/sdltiles.cpp
-index 35ba6fc..a14a4d2 100644
+index 6bcc8e8..679557e 100644
 --- a/src/sdltiles.cpp
 +++ b/src/sdltiles.cpp
-@@ -3008,8 +3008,8 @@ static void CheckMessages()
+@@ -3017,8 +3017,8 @@ static void CheckMessages()
  #endif
  
      // Copy the current input context

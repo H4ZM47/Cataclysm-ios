@@ -21,14 +21,20 @@ OUT="$(cd "$OUT" && pwd)"
 
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
 
-# Main menu -> New Game -> Play Now! (default scenario), then try the touch
-# controls. "idle=<s>" waits until nothing was drawn for <s> seconds (the
-# main menu after start-up); "wait=DEFAULTMODE" waits until the game asks for
-# input in gameplay, i.e. world generation has finished.
+# Main menu -> New Game -> Play Now! (default scenario), then play a little
+# with the touch controls and quicksave. "idle=<s>" waits until nothing was
+# drawn for <s> seconds (the main menu after start-up); "wait=DEFAULTMODE"
+# waits until the game asks for input in gameplay, i.e. world generation has
+# finished.
 DEFAULT_SCRIPT="5:idle=8;shot=01-main-menu;text=n;2:shot=02-new-game-menu;text=d"
-DEFAULT_SCRIPT+=";wait=DEFAULTMODE;2:shot=03-game-start;key=Escape;2:shot=04-game"
-DEFAULT_SCRIPT+=";tap=0.5,0.45;swipe=0.5,0.5,0.75,0.5;2:shot=05-after-touch"
-DEFAULT_SCRIPT+=";tap2=0.5,0.5;3:shot=06-two-finger-tap;key=Escape;2:shot=07-end"
+DEFAULT_SCRIPT+=";wait=DEFAULTMODE;2:shot=03-game-start"
+# Swipe right: walk east.
+DEFAULT_SCRIPT+=";swipe=0.3,0.5,0.45,0.5;2:shot=04-swipe-move"
+# Two-finger tap: inventory. Double tap: back out of it.
+DEFAULT_SCRIPT+=";tap2=0.3,0.5;2:shot=05-two-finger-tap-inventory"
+DEFAULT_SCRIPT+=";tap=0.3,0.5;0.1:tap=0.3,0.5;2:wait=DEFAULTMODE;shot=06-double-tap-back"
+# Game menu, then quicksave from it.
+DEFAULT_SCRIPT+=";key=Escape;2:shot=07-game-menu;text=e;5:shot=08-after-quicksave"
 DEFAULT_SCRIPT+=";log=autoplay-finished"
 SCRIPT="${SMOKE_SCRIPT:-$DEFAULT_SCRIPT}"
 
