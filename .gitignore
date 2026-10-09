@@ -1,0 +1,10 @@
+# Upstream checkout produced by scripts/fetch-cdda.sh
+/cdda/
+# Build products
+/build/
+/deps/
+/dist/
+*.ipa
+*.xcarchive
+DerivedData/
+.DS_Store
