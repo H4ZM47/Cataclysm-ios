@@ -118,8 +118,11 @@ add_executable(Cataclysm MACOSX_BUNDLE
     "${CMAKE_CURRENT_SOURCE_DIR}/resources/Assets.xcassets")
 target_compile_definitions(Cataclysm PRIVATE ${CDDA_DEFINITIONS})
 target_include_directories(Cataclysm PRIVATE ${CDDA_INCLUDE_DIRS})
+# Xcode enables -Wshorten-64-to-32, which floods the log for upstream code.
 target_compile_options(Cataclysm PRIVATE
     -fsigned-char
+    -Wno-shorten-64-to-32
+    -Wno-unknown-warning-option
     $<$<COMPILE_LANGUAGE:CXX,OBJCXX>:-Wno-deprecated-declarations>)
 
 # ---------------------------------------------------------------------------
@@ -149,6 +152,7 @@ target_link_libraries(Cataclysm PRIVATE
     "-framework CoreGraphics"
     "-framework CoreHaptics"
     "-framework CoreMotion"
+    "-framework CoreText"
     "-framework CoreVideo"
     "-framework Foundation"
     "-framework GameController"
