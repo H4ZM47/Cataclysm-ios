@@ -61,6 +61,8 @@ set(APP_DEVELOPMENT_TEAM "" CACHE STRING "Apple developer team ID used for autom
 set(APP_MARKETING_VERSION "${_default_marketing_version}" CACHE STRING "CFBundleShortVersionString")
 set(APP_BUILD_NUMBER "1" CACHE STRING "CFBundleVersion")
 option(APP_BUNDLE_TRANSLATIONS "Bundle compiled translations from cdda/lang/mo if present" ON)
+option(APP_INCREASED_MEMORY_LIMIT
+    "Request the increased memory limit entitlement (the signing team must have this capability)" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -182,6 +184,10 @@ set_target_properties(Cataclysm PROPERTIES
     XCODE_ATTRIBUTE_ENABLE_USER_SCRIPT_SANDBOXING "NO"
     XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic"
     XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${APP_DEVELOPMENT_TEAM}")
+if(APP_INCREASED_MEMORY_LIMIT)
+    set_target_properties(Cataclysm PROPERTIES
+        XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CMAKE_CURRENT_SOURCE_DIR}/resources/Cataclysm.entitlements")
+endif()
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/resources/Info.plist.in"
     "${CMAKE_CURRENT_BINARY_DIR}/Info.plist" @ONLY)
 

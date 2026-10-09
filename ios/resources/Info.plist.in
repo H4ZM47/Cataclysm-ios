@@ -24,6 +24,9 @@
 	<string>@CDDA_VERSION_STRING@</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- SDL's controller support may use CoreBluetooth for Bluetooth LE game controllers. -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Cataclysm uses Bluetooth to connect game controllers.</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<!-- Expose Documents/ (saves, config, mods, tilesets) in the Files app and Finder. -->

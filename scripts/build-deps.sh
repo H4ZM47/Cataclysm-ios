@@ -81,6 +81,7 @@ build_one() {
         -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH \
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DBUILD_SHARED_LIBS=OFF \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
         -DSDL2_DIR="$prefix/lib/cmake/SDL2" \
         "$@" >"$BUILD/$platform-$name-configure.log" 2>&1 \
         || { cat "$BUILD/$platform-$name-configure.log"; return 1; }

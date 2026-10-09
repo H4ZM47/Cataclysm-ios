@@ -109,7 +109,12 @@ APP_DEVELOPMENT_TEAM=ABCDE12345 APP_BUNDLE_ID=com.example.cataclysm scripts/buil
 ```
 
 or open the project in Xcode, select the *Cataclysm* scheme, pick your team under *Signing &
-Capabilities* and press Run. A full build takes a while: Cataclysm has around 450 large source
+Capabilities* and press Run.
+
+Cataclysm keeps the whole game database in memory. If your App ID has the
+[Increased Memory Limit](https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.developer.kernel.increased-memory-limit)
+capability enabled, request it with `EXTRA_CMAKE_ARGS=-DAPP_INCREASED_MEMORY_LIMIT=ON`; this helps
+on devices with less RAM. A full build takes a while: Cataclysm has around 450 large source
 files.
 
 ### Repository layout
