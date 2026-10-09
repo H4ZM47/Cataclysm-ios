@@ -50,12 +50,12 @@ build on iPhone and iPad:
  src/output.cpp               |   2 +-
  src/overmap_ui.cpp           |   2 +-
  src/savegame.cpp             |   4 +-
- src/sdltiles.cpp             | 466 +++++++++++++++++++++++++++++------
+ src/sdltiles.cpp             | 486 +++++++++++++++++++++++++++++------
  src/string_editor_window.cpp |   4 +-
  src/string_input_popup.cpp   |   4 +-
  src/uilist.cpp               |   2 +-
  src/worldfactory.cpp         |   4 +-
- 29 files changed, 542 insertions(+), 145 deletions(-)
+ 29 files changed, 562 insertions(+), 145 deletions(-)
 
 diff --git a/src/advanced_inv.cpp b/src/advanced_inv.cpp
 index 619358d..220da20 100644
@@ -886,7 +886,7 @@ index 839ccd3..a3d0b5c 100644
  void game::load_shortcuts( const cata_path &path )
  {
 diff --git a/src/sdltiles.cpp b/src/sdltiles.cpp
-index 020cf3d..f381b1c 100644
+index 020cf3d..35ba6fc 100644
 --- a/src/sdltiles.cpp
 +++ b/src/sdltiles.cpp
 @@ -91,7 +91,9 @@ std::unique_ptr<cataimgui::client> imclient;
@@ -1101,20 +1101,34 @@ index 020cf3d..f381b1c 100644
  extern "C" {
  
      static bool visible_display_frame_dirty = false;
-@@ -534,6 +629,79 @@ SDL_Rect get_android_render_rect( float DisplayBufferWidth, float DisplayBufferH
+@@ -534,6 +629,96 @@ SDL_Rect get_android_render_rect( float DisplayBufferWidth, float DisplayBufferH
      return dstrect;
  }
  
 +#elif defined(CATA_IOS)
 +static bool visible_display_frame_dirty = false;
++// Set when the window size or safe area no longer match the current layout.
++static bool ios_layout_dirty = false;
 +
-+// Track the on-screen keyboard so the terminal can be shrunk above it.
-+static void ios_poll_keyboard()
++// Track the on-screen keyboard so the terminal can be shrunk above it, and
++// notice layout changes that arrive without a window event: UIKit only
++// reports safe area insets once the view has been laid out, which can be
++// after the window was created.
++static void ios_poll_layout()
 +{
 +    const int overlap = cata_ios::keyboard_overlap();
 +    if( overlap != ios_keyboard_overlap ) {
 +        ios_keyboard_overlap = overlap;
 +        visible_display_frame_dirty = true;
++    }
++    const SDL_Rect old_terminal_area = ios_terminal_area;
++    const SDL_Rect old_safe_area = ios_safe_area;
++    const int old_width = WindowWidth;
++    const int old_height = WindowHeight;
++    ios_update_window_metrics();
++    if( ios_terminal_area != old_terminal_area || ios_safe_area != old_safe_area ||
++        WindowWidth != old_width || WindowHeight != old_height ) {
++        ios_layout_dirty = true;
 +    }
 +}
 +
@@ -1160,14 +1174,17 @@ index 020cf3d..f381b1c 100644
 +                  static_cast<int>( ( y - dst.y ) * buffer_height / std::max( dst.h, 1 ) ) );
 +}
 +
-+// Re-layout after the window changed size (e.g. iPad external display or
-+// multitasking changes). Returns true if the terminal was resized.
++// Re-layout after the window size or safe area changed. Returns true if
++// the terminal was resized.
 +static bool ios_handle_resize()
 +{
 +    const int old_width = TERMINAL_WIDTH;
 +    const int old_height = TERMINAL_HEIGHT;
++    ios_layout_dirty = false;
 +    ios_update_window_metrics();
 +    ios_fit_terminal_to_safe_area();
++    DebugLog( D_INFO, DC_ALL ) << "[iOS] relayout: window " << WindowWidth << "x" << WindowHeight
++                               << " px, terminal " << TERMINAL_WIDTH << "x" << TERMINAL_HEIGHT;
 +    if( old_width == TERMINAL_WIDTH && old_height == TERMINAL_HEIGHT ) {
 +        return false;
 +    }
@@ -1181,7 +1198,7 @@ index 020cf3d..f381b1c 100644
  #endif
  
  void refresh_display()
-@@ -549,7 +717,7 @@ void refresh_display()
+@@ -549,7 +734,7 @@ void refresh_display()
      // there, present it, select the buffer as target again.
      SetRenderTarget( renderer, nullptr );
      ClearScreen();
@@ -1190,7 +1207,7 @@ index 020cf3d..f381b1c 100644
      SDL_Rect dstrect = get_android_render_rect( TERMINAL_WIDTH * fontwidth,
                         TERMINAL_HEIGHT * fontheight );
      RenderCopy( renderer, display_buffer, NULL, &dstrect );
-@@ -559,10 +727,19 @@ void refresh_display()
+@@ -559,10 +744,19 @@ void refresh_display()
  
  #if defined(__ANDROID__)
      draw_terminal_size_preview();
@@ -1210,7 +1227,7 @@ index 020cf3d..f381b1c 100644
  #endif
      SDL_RenderPresent( renderer.get() );
      SetRenderTarget( renderer, display_buffer );
-@@ -763,7 +940,7 @@ void cata_tiles::draw_om( const point &dest, const tripoint_abs_omt &center_abs_
+@@ -763,7 +957,7 @@ void cata_tiles::draw_om( const point &dest, const tripoint_abs_omt &center_abs_
          return;
      }
  
@@ -1219,7 +1236,7 @@ index 020cf3d..f381b1c 100644
      // Attempted bugfix for Google Play crash - prevent divide-by-zero if no tile
      // width/height specified
      if( tile_width == 0 || tile_height == 0 ) {
-@@ -1881,7 +2058,7 @@ void toggle_fullscreen_window()
+@@ -1881,7 +2075,7 @@ void toggle_fullscreen_window()
      fullscreen = !fullscreen;
  }
  
@@ -1228,7 +1245,7 @@ index 020cf3d..f381b1c 100644
  static float finger_down_x = -1.0f; // in pixels
  static float finger_down_y = -1.0f; // in pixels
  static float finger_curr_x = -1.0f; // in pixels
-@@ -1911,8 +2088,73 @@ static bool is_quick_shortcut_touch = false;
+@@ -1911,8 +2105,73 @@ static bool is_quick_shortcut_touch = false;
  static bool quick_shortcuts_toggle_handled = false;
  // the current finger repeat delay - will be somewhere between the min/max values depending on user input
  uint32_t finger_repeat_delay = 500;
@@ -1302,7 +1319,7 @@ index 020cf3d..f381b1c 100644
  
  // Quick shortcuts container: maps the touch input context category (std::string) to a std::list of input_events.
  using quick_shortcuts_t = std::list<input_event>;
-@@ -1935,6 +2177,7 @@ std::string get_quick_shortcut_name( const std::string &category )
+@@ -1935,6 +2194,7 @@ std::string get_quick_shortcut_name( const std::string &category )
  
  float android_get_display_density()
  {
@@ -1310,7 +1327,7 @@ index 020cf3d..f381b1c 100644
      JNIEnv *env = ( JNIEnv * )SDL_AndroidGetJNIEnv();
      jobject activity = ( jobject )SDL_AndroidGetActivity();
      jclass clazz( env->GetObjectClass( activity ) );
-@@ -1943,6 +2186,21 @@ float android_get_display_density()
+@@ -1943,6 +2203,21 @@ float android_get_display_density()
      env->DeleteLocalRef( activity );
      env->DeleteLocalRef( clazz );
      return ans;
@@ -1332,7 +1349,7 @@ index 020cf3d..f381b1c 100644
  }
  
  // given the active quick shortcuts, returns the dimensions of each quick shortcut button.
-@@ -1956,8 +2214,8 @@ void get_quick_shortcut_dimensions( quick_shortcuts_t &qsl, float &border, float
+@@ -1956,8 +2231,8 @@ void get_quick_shortcut_dimensions( quick_shortcuts_t &qsl, float &border, float
      float min_width = std::floor( screen_density_scale * std::min(
                                        get_option<int>( "ANDROID_SHORTCUT_WIDTH_MIN" ),
                                        get_option<int>( "ANDROID_SHORTCUT_WIDTH_MAX" ) ) );
@@ -1343,7 +1360,7 @@ index 020cf3d..f381b1c 100644
      if( width * qsl.size() > usable_window_width ) {
          width *= usable_window_width / ( width * qsl.size() );
          if( width < min_width ) {
-@@ -1982,22 +2240,23 @@ input_event *get_quick_shortcut_under_finger( bool down = false )
+@@ -1982,22 +2257,23 @@ input_event *get_quick_shortcut_under_finger( bool down = false )
      float border, width, height;
      get_quick_shortcut_dimensions( qsl, border, width, height );
  
@@ -1372,7 +1389,7 @@ index 020cf3d..f381b1c 100644
                  return &( *it );
              }
          } else {
-@@ -2291,11 +2550,14 @@ void draw_quick_shortcuts()
+@@ -2291,11 +2567,14 @@ void draw_quick_shortcuts()
      float border, width, height;
      get_quick_shortcut_dimensions( qsl, border, width, height );
      input_event *hovered_quick_shortcut = get_quick_shortcut_under_finger();
@@ -1388,7 +1405,7 @@ index 020cf3d..f381b1c 100644
              0.01f ) {
              continue;
          }
-@@ -2346,9 +2608,9 @@ void draw_quick_shortcuts()
+@@ -2346,9 +2625,9 @@ void draw_quick_shortcuts()
              }
          }
          if( shortcut_right )
@@ -1400,7 +1417,7 @@ index 020cf3d..f381b1c 100644
          if( hovered ) {
              SetRenderDrawColor( renderer, 0, 0, 0, 255 );
          } else {
-@@ -2360,15 +2622,15 @@ void draw_quick_shortcuts()
+@@ -2360,15 +2639,15 @@ void draw_quick_shortcuts()
          if( hovered ) {
              // draw a second button hovering above the first one
              if( shortcut_right )
@@ -1419,7 +1436,7 @@ index 020cf3d..f381b1c 100644
                  SetRenderDrawColor( renderer, 0, 0, 0,
                                      get_option<int>( "ANDROID_SHORTCUT_OPACITY_BG" ) * 0.01f * 255.0f );
                  RenderFillRect( renderer, &rect );
-@@ -2378,14 +2640,14 @@ void draw_quick_shortcuts()
+@@ -2378,14 +2657,14 @@ void draw_quick_shortcuts()
          SDL_RenderSetScale( renderer.get(), text_scale, text_scale );
          int text_x, text_y;
          if( shortcut_right ) {
@@ -1436,7 +1453,7 @@ index 020cf3d..f381b1c 100644
          font->OutputChar( renderer, geometry, text, point( text_x + 1, text_y + 1 ), 0,
                            get_option<int>( "ANDROID_SHORTCUT_OPACITY_SHADOW" ) * 0.01f );
          font->OutputChar( renderer, geometry, text, point( text_x, text_y ),
-@@ -2403,13 +2665,13 @@ void draw_quick_shortcuts()
+@@ -2403,13 +2682,13 @@ void draw_quick_shortcuts()
                  hint_text = remove_color_tags( hint_text );
                  const float safe_margin = 0.9f;
                  int hint_length = utf8_width( hint_text );
@@ -1454,7 +1471,7 @@ index 020cf3d..f381b1c 100644
                  font->OutputChar( renderer, geometry, hint_text, point( text_x + 1, text_y + 1 ), 0,
                                    get_option<int>( "ANDROID_SHORTCUT_OPACITY_SHADOW" ) * 0.01f );
                  font->OutputChar( renderer, geometry, hint_text, point( text_x, text_y ),
-@@ -2419,10 +2681,11 @@ void draw_quick_shortcuts()
+@@ -2419,10 +2698,11 @@ void draw_quick_shortcuts()
          }
          SDL_RenderSetScale( renderer.get(), 1.0f, 1.0f );
          i++;
@@ -1467,7 +1484,7 @@ index 020cf3d..f381b1c 100644
  }
  
  void draw_virtual_joystick()
-@@ -2597,6 +2860,7 @@ void handle_finger_input( uint32_t ticks )
+@@ -2597,6 +2877,7 @@ void handle_finger_input( uint32_t ticks )
  
  bool android_is_hardware_keyboard_available()
  {
@@ -1475,7 +1492,7 @@ index 020cf3d..f381b1c 100644
      JNIEnv *env = ( JNIEnv * )SDL_AndroidGetJNIEnv();
      jobject activity = ( jobject )SDL_AndroidGetActivity();
      jclass clazz( env->GetObjectClass( activity ) );
-@@ -2605,12 +2869,16 @@ bool android_is_hardware_keyboard_available()
+@@ -2605,12 +2886,16 @@ bool android_is_hardware_keyboard_available()
      env->DeleteLocalRef( activity );
      env->DeleteLocalRef( clazz );
      return ans;
@@ -1492,7 +1509,7 @@ index 020cf3d..f381b1c 100644
          JNIEnv *env = ( JNIEnv * )SDL_AndroidGetJNIEnv();
          jobject activity = ( jobject )SDL_AndroidGetActivity();
          jclass clazz( env->GetObjectClass( activity ) );
-@@ -2618,11 +2886,14 @@ void android_vibrate()
+@@ -2618,11 +2903,14 @@ void android_vibrate()
          env->CallVoidMethod( activity, method_id, vibration_ms );
          env->DeleteLocalRef( activity );
          env->DeleteLocalRef( clazz );
@@ -1508,7 +1525,7 @@ index 020cf3d..f381b1c 100644
  static bool window_focus = false;
  static bool text_input_active_when_regaining_focus = false;
  #endif
-@@ -2633,7 +2904,7 @@ void StartTextInput()
+@@ -2633,7 +2921,7 @@ void StartTextInput()
      if( SDL_IsTextInputActive() == SDL_TRUE ) {
          return;
      }
@@ -1517,7 +1534,7 @@ index 020cf3d..f381b1c 100644
      SDL_StartTextInput();
  #else
      if( window_focus ) {
-@@ -2646,7 +2917,7 @@ void StartTextInput()
+@@ -2646,7 +2934,7 @@ void StartTextInput()
  
  void StopTextInput()
  {
@@ -1526,14 +1543,14 @@ index 020cf3d..f381b1c 100644
      SDL_StopTextInput();
  #else
      if( window_focus ) {
-@@ -2665,7 +2936,13 @@ static void CheckMessages()
+@@ -2665,7 +2953,13 @@ static void CheckMessages()
      bool text_refresh = false;
      bool is_repeat = false;
  
 -#if defined(__ANDROID__)
 +#if defined(__ANDROID__) || defined(CATA_IOS)
 +#if defined(CATA_IOS)
-+    ios_poll_keyboard();
++    ios_poll_layout();
 +    if( cata_ios::screenshot_pending() ) {
 +        needupdate = true;
 +    }
@@ -1541,7 +1558,7 @@ index 020cf3d..f381b1c 100644
      if( visible_display_frame_dirty ) {
          needupdate = true;
          ui_manager::redraw_invalidated();
-@@ -2679,6 +2956,25 @@ static void CheckMessages()
+@@ -2679,6 +2973,25 @@ static void CheckMessages()
          StartTextInput();
      }
  
@@ -1567,7 +1584,7 @@ index 020cf3d..f381b1c 100644
      // Make sure the SDL surface view is visible, otherwise the "Z" loading screen is visible.
      if( needs_sdl_surface_visibility_refresh ) {
          needs_sdl_surface_visibility_refresh = false;
-@@ -2692,6 +2988,7 @@ static void CheckMessages()
+@@ -2692,6 +3005,7 @@ static void CheckMessages()
          env->DeleteLocalRef( activity );
          env->DeleteLocalRef( clazz );
      }
@@ -1575,7 +1592,17 @@ index 020cf3d..f381b1c 100644
  
      // Copy the current input context
      if( !input_context::input_context_stack.empty() ) {
-@@ -2908,18 +3205,7 @@ static void CheckMessages()
+@@ -2716,6 +3030,9 @@ static void CheckMessages()
+     bool is_default_mode = touch_input_context.get_category() == "DEFAULTMODE";
+     quick_shortcuts_t &qsl = quick_shortcuts_map[get_quick_shortcut_name(
+                                  touch_input_context.get_category() )];
++#if defined(CATA_IOS)
++    cata_ios::autoplay_input_context( touch_input_context.get_category() );
++#endif
+ 
+     // Don't do this logic if we already need an update, otherwise we're likely to overload the game with too much input on hold repeat events
+     if( !needupdate ) {
+@@ -2908,18 +3225,7 @@ static void CheckMessages()
                  quick_shortcuts_toggle_handled = true;
                  refresh_display();
  
@@ -1595,7 +1622,7 @@ index 020cf3d..f381b1c 100644
              }
          }
  
-@@ -2934,6 +3220,9 @@ static void CheckMessages()
+@@ -2934,6 +3240,9 @@ static void CheckMessages()
                  // Prevent repeating inputs on the next call to this function if there is a fingerup event
                  while( SDL_PollEvent( &ev ) ) {
                      if( ev.type == SDL_FINGERUP ) {
@@ -1605,7 +1632,7 @@ index 020cf3d..f381b1c 100644
                          third_finger_down_x = third_finger_curr_x = second_finger_down_x = second_finger_curr_x =
                                                    finger_down_x = finger_curr_x = -1.0f;
                          third_finger_down_y = third_finger_curr_y = second_finger_down_y = second_finger_curr_y =
-@@ -2976,6 +3265,9 @@ static void CheckMessages()
+@@ -2976,6 +3285,9 @@ static void CheckMessages()
  
      std::optional<point> resize_dims;
      bool render_target_reset = false;
@@ -1615,7 +1642,7 @@ index 020cf3d..f381b1c 100644
      using cata::options::mouse;
  
      while( SDL_PollEvent( &ev ) ) {
-@@ -2983,7 +3275,7 @@ static void CheckMessages()
+@@ -2983,7 +3295,7 @@ static void CheckMessages()
          switch( ev.type ) {
              case SDL_WINDOWEVENT:
                  switch( ev.window.event ) {
@@ -1624,7 +1651,7 @@ index 020cf3d..f381b1c 100644
                      // SDL will send a focus lost event whenever the app loses focus (eg. lock screen, switch app focus etc.)
                      // If we detect it and the game seems in a saveable state, try and do a quicksave. This is a bit dodgy
                      // as the player could be ANYWHERE doing ANYTHING (a sub-menu, interacting with an NPC/computer etc.)
-@@ -2997,9 +3289,17 @@ static void CheckMessages()
+@@ -2997,9 +3309,17 @@ static void CheckMessages()
                              !std::uncaught_exception() ) {
                              g->quicksave();
                          }
@@ -1642,7 +1669,7 @@ index 020cf3d..f381b1c 100644
                          WindowWidth = ev.window.data1;
                          WindowHeight = ev.window.data2;
                          SDL_Delay( 500 );
-@@ -3007,6 +3307,7 @@ static void CheckMessages()
+@@ -3007,6 +3327,7 @@ static void CheckMessages()
                          ui_manager::redraw_invalidated();
                          refresh_display();
                          needupdate = true;
@@ -1650,7 +1677,7 @@ index 020cf3d..f381b1c 100644
                          break;
  #else
                      case SDL_WINDOWEVENT_FOCUS_LOST:
-@@ -3042,6 +3343,8 @@ static void CheckMessages()
+@@ -3042,6 +3363,8 @@ static void CheckMessages()
                      case SDL_WINDOWEVENT_RESTORED:
  #if defined(__ANDROID__)
                          needs_sdl_surface_visibility_refresh = true;
@@ -1659,7 +1686,7 @@ index 020cf3d..f381b1c 100644
                          if( android_is_hardware_keyboard_available() ) {
                              StopTextInput();
                              StartTextInput();
-@@ -3049,7 +3352,12 @@ static void CheckMessages()
+@@ -3049,7 +3372,12 @@ static void CheckMessages()
  #endif
                          break;
                      case SDL_WINDOWEVENT_RESIZED:
@@ -1672,7 +1699,7 @@ index 020cf3d..f381b1c 100644
                          break;
                      default:
                          break;
-@@ -3072,7 +3380,7 @@ static void CheckMessages()
+@@ -3072,7 +3400,7 @@ static void CheckMessages()
                      SDL_ShowCursor( SDL_DISABLE );
                  }
                  keyboard_mode mode = keyboard_mode::keychar;
@@ -1681,7 +1708,7 @@ index 020cf3d..f381b1c 100644
                  if( !SDL_IsTextInputActive() ) {
                      mode = keyboard_mode::keycode;
                  }
-@@ -3086,7 +3394,7 @@ static void CheckMessages()
+@@ -3086,7 +3414,7 @@ static void CheckMessages()
                          // key was handled
                      } else {
                          last_input = input_event( lc, input_event_t::keyboard_char );
@@ -1690,7 +1717,7 @@ index 020cf3d..f381b1c 100644
                          if( !android_is_hardware_keyboard_available() ) {
                              if( !is_string_input( touch_input_context ) && !touch_input_context.allow_text_entry ) {
                                  if( get_option<bool>( "ANDROID_AUTO_KEYBOARD" ) ) {
-@@ -3130,7 +3438,7 @@ static void CheckMessages()
+@@ -3130,7 +3458,7 @@ static void CheckMessages()
                  }
  #endif
                  keyboard_mode mode = keyboard_mode::keychar;
@@ -1699,7 +1726,7 @@ index 020cf3d..f381b1c 100644
                  if( !SDL_IsTextInputActive() ) {
                      mode = keyboard_mode::keycode;
                  }
-@@ -3154,7 +3462,7 @@ static void CheckMessages()
+@@ -3154,7 +3482,7 @@ static void CheckMessages()
                      if( strlen( ev.text.text ) > 0 ) {
                          const unsigned lc = UTF8_getch( ev.text.text );
                          last_input = input_event( lc, input_event_t::keyboard_char );
@@ -1708,7 +1735,7 @@ index 020cf3d..f381b1c 100644
                          if( !android_is_hardware_keyboard_available() ) {
                              if( !is_string_input( touch_input_context ) && !touch_input_context.allow_text_entry ) {
                                  if( get_option<bool>( "ANDROID_AUTO_KEYBOARD" ) ) {
-@@ -3297,9 +3605,9 @@ static void CheckMessages()
+@@ -3297,9 +3625,9 @@ static void CheckMessages()
                  }
                  break;
  
@@ -1720,7 +1747,7 @@ index 020cf3d..f381b1c 100644
                      if( !is_quick_shortcut_touch ) {
                          update_finger_repeat_delay();
                      }
-@@ -3323,16 +3631,16 @@ static void CheckMessages()
+@@ -3323,16 +3651,16 @@ static void CheckMessages()
                          }
                      }
  
@@ -1740,7 +1767,7 @@ index 020cf3d..f381b1c 100644
                      finger_down_x = finger_curr_x = ev.tfinger.x * WindowWidth;
                      finger_down_y = finger_curr_y = ev.tfinger.y * WindowHeight;
                      finger_down_time = ticks;
-@@ -3343,13 +3651,13 @@ static void CheckMessages()
+@@ -3343,13 +3671,13 @@ static void CheckMessages()
                      }
                      ui_manager::redraw_invalidated();
                      needupdate = true; // ensure virtual joystick and quick shortcuts redraw as we interact
@@ -1756,7 +1783,7 @@ index 020cf3d..f381b1c 100644
                      if( !is_quick_shortcut_touch ) {
                          third_finger_down_x = third_finger_curr_x = ev.tfinger.x * WindowWidth;
                          third_finger_down_y = third_finger_curr_y = ev.tfinger.y * WindowHeight;
-@@ -3359,7 +3667,7 @@ static void CheckMessages()
+@@ -3359,7 +3687,7 @@ static void CheckMessages()
                  }
                  break;
              case SDL_FINGERUP:
@@ -1765,7 +1792,7 @@ index 020cf3d..f381b1c 100644
                      finger_curr_x = ev.tfinger.x * WindowWidth;
                      finger_curr_y = ev.tfinger.y * WindowHeight;
                      if( is_quick_shortcut_touch ) {
-@@ -3472,18 +3780,7 @@ static void CheckMessages()
+@@ -3472,18 +3800,7 @@ static void CheckMessages()
  
                                      quick_shortcuts_toggle_handled = true;
  
@@ -1785,7 +1812,7 @@ index 020cf3d..f381b1c 100644
                                  } else {
                                      last_input = input_event( three_tap_key, input_event_t::keyboard_char );
                                  }
-@@ -3528,14 +3825,14 @@ static void CheckMessages()
+@@ -3528,14 +3845,14 @@ static void CheckMessages()
                      needupdate = true; // ensure virtual joystick and quick shortcuts are updated properly
                      ui_manager::redraw_invalidated();
                      refresh_display(); // as above, but actually redraw it now as well
@@ -1802,7 +1829,7 @@ index 020cf3d..f381b1c 100644
                      if( is_three_finger_touch ) {
                          // on third finger release, just remember the x/y position so we can calculate delta once first finger is done
                          // is_three_finger_touch will be reset when first finger lifts (see above)
-@@ -3543,6 +3840,9 @@ static void CheckMessages()
+@@ -3543,6 +3860,9 @@ static void CheckMessages()
                          third_finger_curr_y = ev.tfinger.y * WindowHeight;
                      }
                  }
@@ -1812,12 +1839,12 @@ index 020cf3d..f381b1c 100644
  
                  break;
  #endif
-@@ -3560,6 +3860,13 @@ static void CheckMessages()
+@@ -3560,6 +3880,13 @@ static void CheckMessages()
          restore_on_out_of_scope prev_last_input( last_input );
          needupdate = resized = handle_resize( resize_dims.value().x, resize_dims.value().y );
      }
 +#if defined(CATA_IOS)
-+    if( ios_window_resized ) {
++    if( ios_window_resized || ios_layout_dirty ) {
 +        restore_on_out_of_scope prev_last_input( last_input );
 +        resized = ios_handle_resize();
 +        needupdate = true;
@@ -1826,7 +1853,7 @@ index 020cf3d..f381b1c 100644
      // resizing already reinitializes the render target
      if( !resized && render_target_reset ) {
          throwErrorIf( !SetupRenderTarget(), "SetupRenderTarget failed" );
-@@ -3640,7 +3947,7 @@ static void init_term_size_and_scaling_factor()
+@@ -3640,7 +3967,7 @@ static void init_term_size_and_scaling_factor()
      scaling_factor = 1;
      point terminal( get_option<int>( "TERMINAL_X" ), get_option<int>( "TERMINAL_Y" ) );
  
@@ -1835,7 +1862,7 @@ index 020cf3d..f381b1c 100644
  
      if( get_option<std::string>( "SCALING_FACTOR" ) == "2" ) {
          scaling_factor = 2;
-@@ -3930,7 +4237,7 @@ input_event input_manager::get_input_event( const keyboard_mode preferred_keyboa
+@@ -3930,7 +4257,7 @@ input_event input_manager::get_input_event( const keyboard_mode preferred_keyboa
          throw std::runtime_error( "input_manager::get_input_event called in test mode" );
      }
  
@@ -1844,7 +1871,7 @@ index 020cf3d..f381b1c 100644
      if( actual_keyboard_mode( preferred_keyboard_mode ) == keyboard_mode::keychar ) {
          StartTextInput();
      } else {
-@@ -3986,13 +4293,16 @@ input_event input_manager::get_input_event( const keyboard_mode preferred_keyboa
+@@ -3986,13 +4313,16 @@ input_event input_manager::get_input_event( const keyboard_mode preferred_keyboa
      }
  
      SDL_GetMouseState( &last_input.mouse_pos.x, &last_input.mouse_pos.y );

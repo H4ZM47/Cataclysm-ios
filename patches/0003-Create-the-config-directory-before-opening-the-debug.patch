@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: cataclysm-ios <cataclysm-ios@localhost>
+Date: Fri, 9 Oct 2026 23:05:44 +0000
+Subject: [PATCH] Create the config directory before opening the debug log
+
+The debug log is written to config/debug.log, but on a fresh install
+the config directory is only created after logging starts, so the
+first session's log was silently lost.
+---
+ src/main.cpp | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/main.cpp b/src/main.cpp
+index 0ad8731..a8de5c3 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -716,6 +716,9 @@ int main( int argc, const char *argv[] )
+                 PATH_INFO::user_dir().c_str() );
+         exit( 1 );
+     }
++    // The debug log lives in the config directory; on a fresh install it does
++    // not exist yet, and the log would silently go nowhere.
++    assure_dir_exist( PATH_INFO::config_dir() );
+ 
+ #if defined(EMSCRIPTEN)
+     setupDebug( DebugOutput::std_err );

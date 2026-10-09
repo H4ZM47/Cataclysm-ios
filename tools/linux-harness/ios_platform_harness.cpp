@@ -158,3 +158,11 @@ int default_font_height()
 }
 
 } // namespace cata_ios
+
+// On iOS SDL2main provides main() and calls the game's SDL_main(); do the same.
+extern "C" int SDL_main( int argc, char **argv );
+
+int main( int argc, char **argv )
+{
+    return SDL_main( argc, argv );
+}

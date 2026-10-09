@@ -6,6 +6,9 @@
 // Each step waits <seconds> (default 1) after the previous one, then performs:
 //   idle=<seconds>        wait until no frame has been drawn for that long,
 //                         e.g. until loading finished (gives up after 10 min)
+//   wait=<context>        wait until the game waits for input in that input
+//                         context, e.g. DEFAULTMODE for gameplay (gives up
+//                         after 10 min)
 //   text=<utf-8>          type text (one SDL_TEXTINPUT per character)
 //   key=<name>            press and release a key (SDL key name, e.g. Return)
 //   tap=<x>,<y>           one-finger tap at normalized window coordinates
@@ -13,7 +16,7 @@
 //   tap2=<x>,<y>          two-finger tap
 //   shot=<name>           save the window to Documents/autoplay/<name>.png
 //   log=<text>            write a marker line to stderr
-// Example: "idle=8;shot=menu;text=n;text=d;3:idle=10;shot=game"
+// Example: "idle=8;shot=menu;text=n;text=d;wait=DEFAULTMODE;shot=game"
 
 #include "ios_platform.h"
 
@@ -54,6 +57,12 @@ std::atomic<Uint32> frame_count{ 0 };
 Uint32 idle_wait_started = 0;
 constexpr Uint32 idle_poll_ms = 250;
 constexpr Uint32 idle_give_up_ms = 10 * 60 * 1000;
+
+// The input context the game currently waits in, and since when.
+std::mutex context_mutex;
+std::string current_context;
+Uint32 context_since = 0;
+constexpr Uint32 context_settle_ms = 1500;
 
 // Touches synthesized here use IDs far from real UITouch addresses.
 SDL_FingerID next_finger_id = 0x7ac0;
@@ -181,7 +190,7 @@ void run_step( const autoplay_step &step )
             pending_screenshot = screenshot_dir + "/" + step.arg + ".png";
         }
         push_wakeup();
-    } else if( step.action != "log" && step.action != "idle" ) {
+    } else if( step.action != "log" && step.action != "idle" && step.action != "wait" ) {
         std::fprintf( stderr, "[autoplay] unknown action %s\n", step.action.c_str() );
     }
 }
@@ -207,6 +216,33 @@ bool idle_reached( const autoplay_step &step )
     return false;
 }
 
+// Whether a wait step may proceed: the game has been waiting for input in
+// the requested context for a moment.
+bool context_reached( const autoplay_step &step )
+{
+    const Uint32 now = SDL_GetTicks();
+    if( idle_wait_started == 0 ) {
+        idle_wait_started = now;
+    }
+    bool reached = false;
+    {
+        std::lock_guard<std::mutex> lock( context_mutex );
+        reached = current_context == step.arg && now - context_since >= context_settle_ms;
+    }
+    if( reached ) {
+        std::fprintf( stderr, "[autoplay] in %s after %.1fs\n", step.arg.c_str(),
+                      ( now - idle_wait_started ) / 1000.0 );
+        idle_wait_started = 0;
+        return true;
+    }
+    if( now - idle_wait_started >= idle_give_up_ms ) {
+        std::fprintf( stderr, "[autoplay] never reached %s, continuing anyway\n", step.arg.c_str() );
+        idle_wait_started = 0;
+        return true;
+    }
+    return false;
+}
+
 // Runs on SDL's timer thread; SDL_PushEvent is thread-safe.
 Uint32 timer_callback( Uint32, void * )
 {
@@ -216,6 +252,10 @@ Uint32 timer_callback( Uint32, void * )
     const autoplay_step &step = steps[next_step];
     if( step.action == "idle" ) {
         if( !idle_reached( step ) ) {
+            return idle_poll_ms;
+        }
+    } else if( step.action == "wait" ) {
+        if( !context_reached( step ) ) {
             return idle_poll_ms;
         }
     } else {
@@ -275,6 +315,15 @@ bool screenshot_pending()
 {
     std::lock_guard<std::mutex> lock( screenshot_mutex );
     return !pending_screenshot.empty();
+}
+
+void autoplay_input_context( const std::string &category )
+{
+    std::lock_guard<std::mutex> lock( context_mutex );
+    if( category != current_context ) {
+        current_context = category;
+        context_since = SDL_GetTicks();
+    }
 }
 
 bool autoplay_frame( std::string &path )

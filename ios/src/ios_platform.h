@@ -76,6 +76,8 @@ int default_font_height();
 void autoplay_start( SDL_Window *window );
 // Whether a scripted step asked for a screenshot of the next frame.
 bool screenshot_pending();
+// Reports the input context the game is waiting in.
+void autoplay_input_context( const std::string &category );
 // Called for every frame about to be presented. Returns true, with the PNG
 // path to write, if the frame should be saved as a screenshot.
 bool autoplay_frame( std::string &path );

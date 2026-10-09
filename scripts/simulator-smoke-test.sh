@@ -22,12 +22,13 @@ OUT="$(cd "$OUT" && pwd)"
 BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist")"
 
 # Main menu -> New Game -> Play Now! (default scenario), then try the touch
-# controls. "idle=<s>" waits until nothing was drawn for <s> seconds, i.e.
-# until loading or world generation has finished.
+# controls. "idle=<s>" waits until nothing was drawn for <s> seconds (the
+# main menu after start-up); "wait=DEFAULTMODE" waits until the game asks for
+# input in gameplay, i.e. world generation has finished.
 DEFAULT_SCRIPT="5:idle=8;shot=01-main-menu;text=n;2:shot=02-new-game-menu;text=d"
-DEFAULT_SCRIPT+=";5:idle=10;shot=03-game-start;key=Escape;2:idle=3;shot=04-game"
-DEFAULT_SCRIPT+=";tap=0.5,0.45;swipe=0.5,0.5,0.75,0.5;2:idle=2;shot=05-after-touch"
-DEFAULT_SCRIPT+=";tap2=0.5,0.5;2:idle=2;shot=06-two-finger-tap;key=Escape;2:idle=2;shot=07-end"
+DEFAULT_SCRIPT+=";wait=DEFAULTMODE;2:shot=03-game-start;key=Escape;2:shot=04-game"
+DEFAULT_SCRIPT+=";tap=0.5,0.45;swipe=0.5,0.5,0.75,0.5;2:shot=05-after-touch"
+DEFAULT_SCRIPT+=";tap2=0.5,0.5;3:shot=06-two-finger-tap;key=Escape;2:shot=07-end"
 DEFAULT_SCRIPT+=";log=autoplay-finished"
 SCRIPT="${SMOKE_SCRIPT:-$DEFAULT_SCRIPT}"
 
