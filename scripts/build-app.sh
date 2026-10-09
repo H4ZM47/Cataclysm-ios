@@ -102,4 +102,8 @@ APP="$BUILD_DIR/$CONFIG-$PLATFORM/Cataclysm.app"
 if [[ ! -d "$APP" ]]; then
     APP="$(find "$BUILD_DIR" -name Cataclysm.app -type d -path "*$PLATFORM*" -prune | head -1)"
 fi
+if [[ ! -d "$APP/data/json" || ! -d "$APP/gfx" || ! -f "$APP/android/joystick.png" ]]; then
+    echo "error: game data is missing from $APP" >&2
+    exit 1
+fi
 echo "==> Built $APP ($(du -sh "$APP" | cut -f1))"

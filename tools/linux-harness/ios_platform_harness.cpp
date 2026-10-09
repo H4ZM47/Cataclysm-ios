@@ -86,6 +86,11 @@ std::string user_dir()
     return with_slash( env_or( "CATA_HARNESS_USER_DIR", "./harness-user/" ) );
 }
 
+std::string cache_dir()
+{
+    return user_dir() + "Caches/";
+}
+
 float display_scale()
 {
     return std::strtof( env_or( "CATA_HARNESS_SCALE", "3" ).c_str(), nullptr );

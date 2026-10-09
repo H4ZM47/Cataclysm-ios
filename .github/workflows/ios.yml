@@ -93,6 +93,8 @@ jobs:
 
       - name: Smoke test in the iOS Simulator
         if: matrix.platform == 'iphonesimulator'
+        env:
+          SMOKE_PRINT_SCREENSHOTS: "1"
         run: scripts/simulator-smoke-test.sh build/iphonesimulator/Release-iphonesimulator/Cataclysm.app dist/smoke-test
 
       - name: Upload smoke test results

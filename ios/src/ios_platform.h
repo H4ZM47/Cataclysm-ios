@@ -28,6 +28,10 @@ std::string resource_dir();
 // This is the app's Documents folder, which the Files app can browse.
 std::string user_dir();
 
+// Writable directory for regenerable data (Library/Caches), with a trailing
+// slash. iOS may clear it when storage runs low.
+std::string cache_dir();
+
 // Pixels per point of the main screen (2 or 3 on Retina displays).
 float display_scale();
 

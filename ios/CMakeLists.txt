@@ -60,7 +60,6 @@ set(APP_BUNDLE_ID "io.github.h4zm47.cataclysmdda" CACHE STRING "CFBundleIdentifi
 set(APP_DEVELOPMENT_TEAM "" CACHE STRING "Apple developer team ID used for automatic signing (empty: sign manually or not at all)")
 set(APP_MARKETING_VERSION "${_default_marketing_version}" CACHE STRING "CFBundleShortVersionString")
 set(APP_BUILD_NUMBER "1" CACHE STRING "CFBundleVersion")
-option(APP_BUNDLE_TRANSLATIONS "Bundle compiled translations from cdda/lang/mo if present" ON)
 option(APP_INCREASED_MEMORY_LIMIT
     "Request the increased memory limit entitlement (the signing team must have this capability)" OFF)
 
@@ -198,25 +197,10 @@ configure_file("${CMAKE_CURRENT_SOURCE_DIR}/resources/Info.plist.in"
 # Game data is copied into the bundle as plain folders, which is where
 # PATH_INFO looks for it (see ios_platform.mm / main.cpp):
 #   Cataclysm.app/data, Cataclysm.app/gfx, Cataclysm.app/lang/mo
-set(_bundle_dir "$<TARGET_BUNDLE_CONTENT_DIR:Cataclysm>")
-set(_copy_cmds
-    COMMAND rsync -a --delete
-        --exclude CMakeLists.txt --exclude application_manifest.xml
-        --exclude cataicon.ico --exclude xdg --exclude screenshots
-        "${CDDA_DIR}/data/" "${_bundle_dir}/data/"
-    COMMAND rsync -a --delete --exclude CMakeLists.txt
-        "${CDDA_DIR}/gfx/" "${_bundle_dir}/gfx/"
-    # Virtual joystick image used by the touch controls.
-    COMMAND mkdir -p "${_bundle_dir}/android"
-    COMMAND cp -f "${CDDA_DIR}/android/app/src/main/assets/android/joystick.png"
-        "${_bundle_dir}/android/joystick.png")
-# Run scripts/compile-translations.sh before configuring to include them.
-# (No shell conditional here: CMake would split its ';' into separate words.)
-if(APP_BUNDLE_TRANSLATIONS AND EXISTS "${CDDA_DIR}/lang/mo")
-    list(APPEND _copy_cmds
-        COMMAND mkdir -p "${_bundle_dir}/lang"
-        COMMAND rsync -a --delete "${CDDA_DIR}/lang/mo/" "${_bundle_dir}/lang/mo/")
-endif()
-add_custom_command(TARGET Cataclysm POST_BUILD ${_copy_cmds}
+# The copy runs as a script so it can use Xcode's own idea of where the
+# bundle is (TARGET_BUILD_DIR/CONTENTS_FOLDER_PATH), which also holds for
+# archives. Translations are included if cdda/lang/mo exists at build time.
+add_custom_command(TARGET Cataclysm POST_BUILD
+    COMMAND /bin/sh "${CMAKE_CURRENT_SOURCE_DIR}/scripts/copy-game-data.sh" "${CDDA_DIR}"
     COMMENT "Copying Cataclysm game data into the app bundle"
     VERBATIM)

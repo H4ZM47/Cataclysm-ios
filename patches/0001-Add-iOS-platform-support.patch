@@ -42,6 +42,7 @@ build on iPhone and iPad:
  src/input_enums.h            |   2 +-
  src/inventory.cpp            |   4 +-
  src/inventory_ui.cpp         |   8 +-
+ src/json_loader.cpp          |  21 ++
  src/main.cpp                 |  20 +-
  src/messages.cpp             |   2 +-
  src/mutation_ui.cpp          |   2 +-
@@ -55,7 +56,7 @@ build on iPhone and iPad:
  src/string_input_popup.cpp   |   4 +-
  src/uilist.cpp               |   2 +-
  src/worldfactory.cpp         |   4 +-
- 29 files changed, 571 insertions(+), 145 deletions(-)
+ 30 files changed, 592 insertions(+), 145 deletions(-)
 
 diff --git a/src/advanced_inv.cpp b/src/advanced_inv.cpp
 index 619358d..220da20 100644
@@ -466,6 +467,51 @@ index 1fd3b2a..2883f9b 100644
      // allow user to type a drop number without dismissing virtual keyboard after each keypress
      ctxt.allow_text_entry = true;
  #endif
+diff --git a/src/json_loader.cpp b/src/json_loader.cpp
+index 1863c50..6d768a0 100644
+--- a/src/json_loader.cpp
++++ b/src/json_loader.cpp
+@@ -9,11 +9,28 @@
+ #include "flexbuffer_json.h"
+ #include "path_info.h"
+ 
++#if defined(CATA_IOS)
++#include "ios_platform.h"
++#endif
++
+ namespace
+ {
++#if defined(CATA_IOS)
++// The game data is inside the read-only app bundle, so the parsed-JSON
++// caches for it go to the app's Caches directory instead.
++std::filesystem::path bundle_cache_path( const char *name )
++{
++    return std::filesystem::u8path( cata_ios::cache_dir() + name );
++}
++#endif
++
+ flexbuffer_cache &base_cache()
+ {
++#if defined(CATA_IOS)
++    static flexbuffer_cache cache{ bundle_cache_path( "base" ), PATH_INFO::base_path().get_unrelative_path() };
++#else
+     static flexbuffer_cache cache{ ( PATH_INFO::base_path() / "cache" ).get_unrelative_path(), PATH_INFO::base_path().get_unrelative_path() };
++#endif
+     return cache;
+ }
+ 
+@@ -25,7 +42,11 @@ flexbuffer_cache &config_cache()
+ 
+ flexbuffer_cache &data_cache()
+ {
++#if defined(CATA_IOS)
++    static flexbuffer_cache cache{ bundle_cache_path( "data" ), PATH_INFO::datadir_path().get_unrelative_path() };
++#else
+     static flexbuffer_cache cache{ ( PATH_INFO::datadir_path() / "cache" ).get_unrelative_path(), PATH_INFO::datadir_path().get_unrelative_path() };
++#endif
+     return cache;
+ }
+ 
 diff --git a/src/main.cpp b/src/main.cpp
 index cd7b94e..0ad8731 100644
 --- a/src/main.cpp

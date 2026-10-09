@@ -8,6 +8,9 @@
 #   SMOKE_DEVICE    simulator device type name to use (default: newest iPhone Pro)
 #   SMOKE_SCRIPT    CATA_AUTOPLAY script (default: start a "Play Now" game)
 #   SMOKE_TIMEOUT   seconds to wait for the script to finish (default 900)
+#   SMOKE_PRINT_SCREENSHOTS=1  also print small JPEG previews of the
+#                   screenshots as base64 to the log, for CI setups where
+#                   artifacts are hard to reach
 #
 # Exits non-zero if the app crashes or the expected screenshots are missing.
 set -euo pipefail
@@ -120,15 +123,26 @@ cp -R "$DOCS/config/." "$OUT/config/" 2>/dev/null || true
 find ~/Library/Logs/DiagnosticReports -name 'Cataclysm*' -newer "$OUT/stdout.log" \
     -exec cp {} "$OUT/" \; 2>/dev/null || true
 
+echo "==> stdout (tail)"
+tail -n 40 "$OUT/stdout.log" 2>/dev/null || true
 echo "==> stderr (tail)"
-tail -n 40 "$OUT/stderr.log" || true
+tail -n 40 "$OUT/stderr.log" 2>/dev/null || true
 echo "==> debug.log"
 cat "$OUT/config/debug.log" 2>/dev/null | head -n 150 || echo "(no debug.log)"
 
 shopt -s nullglob
 shots=("$OUT"/screenshots/*.png)
 echo "==> ${#shots[@]} screenshot(s): $(cd "$OUT/screenshots" && ls)"
-for required in 01-main-menu 04-game; do
+if [[ "${SMOKE_PRINT_SCREENSHOTS:-0}" == 1 ]] && (( ${#shots[@]} )); then
+    for shot in "${shots[@]}"; do
+        name="$(basename "$shot" .png)"
+        sips -Z 700 -s format jpeg -s formatOptions 30 "$shot" --out "$OUT/preview-$name.jpg" >/dev/null
+        echo "----- BEGIN PREVIEW $name -----"
+        base64 -b 120 -i "$OUT/preview-$name.jpg"
+        echo "----- END PREVIEW $name -----"
+    done
+fi
+for required in 01-main-menu 03-game-start; do
     if [[ ! -f "$OUT/screenshots/$required.png" ]]; then
         echo "error: missing screenshot $required.png" >&2
         status=1

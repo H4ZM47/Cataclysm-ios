@@ -289,6 +289,13 @@ std::string user_dir()
     return with_trailing_slash( paths.firstObject );
 }
 
+std::string cache_dir()
+{
+    NSArray<NSString *> *paths =
+        NSSearchPathForDirectoriesInDomains( NSCachesDirectory, NSUserDomainMask, YES );
+    return with_trailing_slash( paths.firstObject );
+}
+
 float display_scale()
 {
     return static_cast<float>( UIScreen.mainScreen.nativeScale );
