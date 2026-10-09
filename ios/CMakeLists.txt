@@ -210,9 +210,12 @@ set(_copy_cmds
     COMMAND mkdir -p "${_bundle_dir}/android"
     COMMAND cp -f "${CDDA_DIR}/android/app/src/main/assets/android/joystick.png"
         "${_bundle_dir}/android/joystick.png")
-if(APP_BUNDLE_TRANSLATIONS)
+# Run scripts/compile-translations.sh before configuring to include them.
+# (No shell conditional here: CMake would split its ';' into separate words.)
+if(APP_BUNDLE_TRANSLATIONS AND EXISTS "${CDDA_DIR}/lang/mo")
     list(APPEND _copy_cmds
-        COMMAND /bin/sh -c "if [ -d '${CDDA_DIR}/lang/mo' ]; then mkdir -p '${_bundle_dir}/lang' && rsync -a --delete '${CDDA_DIR}/lang/mo/' '${_bundle_dir}/lang/mo/'; fi")
+        COMMAND mkdir -p "${_bundle_dir}/lang"
+        COMMAND rsync -a --delete "${CDDA_DIR}/lang/mo/" "${_bundle_dir}/lang/mo/")
 endif()
 add_custom_command(TARGET Cataclysm POST_BUILD ${_copy_cmds}
     COMMENT "Copying Cataclysm game data into the app bundle"
