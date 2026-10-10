@@ -353,7 +353,11 @@ int keyboard_overlap()
     if( CGRectIsNull( covered ) || covered.size.height <= 0 ) {
         return 0;
     }
-    return static_cast<int>( std::ceil( covered.size.height * window_pixel_scale( view ) ) );
+    // Everything below the keyboard's top edge. An undocked, split or
+    // floating iPad keyboard does not reach the bottom of the screen, and the
+    // terminal is only ever shortened from the bottom.
+    const CGFloat clearance = CGRectGetMaxY( view.bounds ) - CGRectGetMinY( covered );
+    return static_cast<int>( std::ceil( clearance * window_pixel_scale( view ) ) );
 }
 
 bool hardware_keyboard_connected()

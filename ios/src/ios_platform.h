@@ -46,8 +46,8 @@ pixel_rect terminal_area();
 // home indicator. On-screen controls are laid out here.
 pixel_rect safe_area();
 
-// Pixels at the bottom of the window currently covered by the on-screen
-// keyboard (0 when it is hidden).
+// Pixels at the bottom of the window from the on-screen keyboard's top edge
+// down (0 when it is hidden or clear of the window).
 int keyboard_overlap();
 
 // Whether a hardware keyboard is attached. The environment variable
