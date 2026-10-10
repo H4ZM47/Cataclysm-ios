@@ -21,9 +21,10 @@ this repository holds only the iOS build system, a small patch series and the iO
 
 There is no App Store release. Install the app with your own Apple ID:
 
-1. Download the **Cataclysm-unsigned-ipa** artifact from the latest successful run of the
-   [iOS workflow](../../actions/workflows/ios.yml) and unzip it to get
-   `Cataclysm-0.I-1-unsigned.ipa`.
+1. Download the unsigned IPA from the [Releases](../../releases) page, or the
+   **Cataclysm-unsigned-ipa** artifact from a successful run of the
+   [iOS workflow](../../actions/workflows/ios.yml) (unzip it to get
+   `Cataclysm-0.I-1-unsigned.ipa`).
 2. Sign and install it with a sideloading tool such as [AltStore](https://altstore.io/) or
    [Sideloadly](https://sideloadly.io/). With a free Apple ID the signature lasts 7 days,
    after which the tool has to refresh it; your saves are kept.
@@ -128,7 +129,7 @@ files.
 | `ios/src/ios_autoplay.cpp` | Scripted input for automated tests |
 | `ios/scripts/copy-game-data.sh` | Build phase that copies `data/`, `gfx/` and translations into the app |
 | `ios/resources/` | `Info.plist`, app icon |
-| `scripts/` | Fetch, build, package and test scripts |
+| `scripts/` | Fetch, build, package, release and test scripts |
 | `tools/linux-harness/` | Desktop build of the iOS code paths for development without a Mac |
 | `.github/workflows/ios.yml` | CI: device build and IPA, simulator build and smoke test |
 
@@ -153,6 +154,21 @@ that it:
 Commit your changes there, then run `scripts/export-patches.sh` to regenerate `patches/`.
 To move to a newer upstream release, update `cdda.env`, run `scripts/fetch-cdda.sh --force`
 and rebase the patches.
+
+### Publishing a release
+
+`scripts/release.sh` publishes an unsigned IPA as a GitHub Release from your Mac, without
+GitHub Actions. It builds the device app (or takes an IPA you pass it), then creates the release
+and tag on the current commit with the GitHub CLI:
+
+```sh
+gh auth login                                  # once
+scripts/release.sh v0.I-1-ios.1                # build and publish
+scripts/release.sh v0.I-1-ios.1 path/to.ipa    # publish an IPA you already have
+RELEASE_DRAFT=1 scripts/release.sh v0.I-1-ios.1   # create a draft to review first
+```
+
+The commit must be clean and pushed, and `./cdda` must match `patches/`.
 
 ### Testing
 
