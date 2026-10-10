@@ -91,6 +91,12 @@ xcrun simctl bootstatus "$UDID" -b >/dev/null
 echo "==> Installing $APP"
 xcrun simctl install "$UDID" "$APP"
 
+# On a device the installed bundle is signed and read-only; in the Simulator
+# it is writable. Make it read-only so that writes into it fail here too.
+INSTALLED_APP="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" app)"
+chmod -R a-w "$INSTALLED_APP"
+trap 'chmod -R u+w "$INSTALLED_APP" 2>/dev/null || true' EXIT
+
 echo "==> Launching $BUNDLE_ID"
 launch_output="$(SIMCTL_CHILD_CATA_AUTOPLAY="$SCRIPT" \
     SIMCTL_CHILD_CATA_IOS_HARDWARE_KEYBOARD="${SMOKE_HARDWARE_KEYBOARD:-0}" \
@@ -186,6 +192,12 @@ for required in 01-main-menu 03-game-start; do
         status=1
     fi
 done
+# Writes into the read-only bundle (or anywhere else not permitted).
+if grep -n "Permission denied\|Read-only file system\|Operation not permitted" \
+        "$OUT/config/debug.log" 2>/dev/null; then
+    echo "error: the game tried to write where it may not (see above)" >&2
+    status=1
+fi
 # The quicksave at the end of the default script writes the character.
 if [[ -z "${SMOKE_SCRIPT:-}" && -z "$(find "$DOCS/save" -name '*.sav*' -print -quit 2>/dev/null)" ]]; then
     echo "error: no saved character in $DOCS/save" >&2
