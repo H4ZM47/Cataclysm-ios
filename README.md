@@ -158,8 +158,11 @@ and rebase the patches.
 
 CI builds both the device and the simulator app. The simulator job installs the app in an
 iOS Simulator and drives it with `CATA_AUTOPLAY` (see `ios/src/ios_autoplay.cpp`): it starts a
-*Play Now!* game, exercises the touch controls and uploads screenshots and logs as the
-**smoke-test** artifact. `scripts/simulator-smoke-test.sh` runs the same test locally.
+*Play Now!* game, exercises the touch controls and the on-screen keyboard, quicksaves, checks
+that the save was written and uploads screenshots and logs as the **smoke-test** artifact.
+The Simulator can report the Mac's keyboard as a hardware keyboard, which hides the quick
+shortcuts, so the test sets `CATA_IOS_HARDWARE_KEYBOARD=0` to get the phone behaviour.
+`scripts/simulator-smoke-test.sh` runs the same test locally.
 
 `tools/linux-harness` builds the game for Linux with the iOS code paths enabled and a stand-in
 platform layer (simulated notch, keyboard and screen scale). It runs the same layout, touch

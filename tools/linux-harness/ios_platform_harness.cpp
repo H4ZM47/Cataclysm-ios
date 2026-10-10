@@ -126,7 +126,7 @@ int keyboard_overlap()
 
 bool hardware_keyboard_connected()
 {
-    return false;
+    return env_or( "CATA_IOS_HARDWARE_KEYBOARD", "0" ) != "0";
 }
 
 void haptic_feedback()
@@ -140,7 +140,7 @@ void show_toast( const std::string &message )
 
 bool consume_keyboard_toggle_request()
 {
-    return false;
+    return autoplay_consume_keyboard_toggle();
 }
 
 bool consume_shortcuts_toggle_request()

@@ -38,6 +38,7 @@ fi
 # The app bundle holds data/, gfx/, lang/ and android/joystick.png side by side.
 BUNDLE="$ROOT/build/harness-bundle"
 mkdir -p "$BUNDLE" "$USER_DIR"
+USER_DIR="$(cd "$USER_DIR" && pwd)"
 ln -sfn "$CDDA/data" "$BUNDLE/data"
 ln -sfn "$CDDA/gfx" "$BUNDLE/gfx"
 ln -sfn "$CDDA/lang" "$BUNDLE/lang"

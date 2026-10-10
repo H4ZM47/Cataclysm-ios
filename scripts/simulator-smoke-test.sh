@@ -8,6 +8,9 @@
 #   SMOKE_DEVICE    simulator device type name to use (default: newest iPhone Pro)
 #   SMOKE_SCRIPT    CATA_AUTOPLAY script (default: start a "Play Now" game)
 #   SMOKE_TIMEOUT   seconds to wait for the script to finish (default 900)
+#   SMOKE_HARDWARE_KEYBOARD=1  test with a hardware keyboard. By default the
+#                   app is told there is none, as on a phone, so the quick
+#                   shortcuts and the on-screen keyboard are exercised.
 #   SMOKE_PRINT_SCREENSHOTS=1  also print small JPEG previews of the
 #                   screenshots as base64 to the log, for CI setups where
 #                   artifacts are hard to reach
@@ -31,13 +34,15 @@ BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.p
 # finished.
 DEFAULT_SCRIPT="5:idle=8;shot=01-main-menu;text=n;2:shot=02-new-game-menu;text=d"
 DEFAULT_SCRIPT+=";wait=DEFAULTMODE;2:shot=03-game-start"
-# Swipe right: walk east.
-DEFAULT_SCRIPT+=";swipe=0.3,0.5,0.45,0.5;2:shot=04-swipe-move"
+# Keyboard button: the terminal makes room for the on-screen keyboard.
+DEFAULT_SCRIPT+=";keyboard;3:shot=04-keyboard;keyboard;2:shot=05-keyboard-hidden"
+# Swipe right: walk east. Then pass a turn, so there is something to save.
+DEFAULT_SCRIPT+=";swipe=0.3,0.5,0.45,0.5;2:shot=06-swipe-move;text=."
 # Two-finger tap: inventory. Double tap: back out of it.
-DEFAULT_SCRIPT+=";tap2=0.3,0.5;2:shot=05-two-finger-tap-inventory"
-DEFAULT_SCRIPT+=";tap=0.3,0.5;0.1:tap=0.3,0.5;2:wait=DEFAULTMODE;shot=06-double-tap-back"
+DEFAULT_SCRIPT+=";2:tap2=0.3,0.5;2:shot=07-two-finger-tap-inventory"
+DEFAULT_SCRIPT+=";tap=0.3,0.5;0.1:tap=0.3,0.5;2:wait=DEFAULTMODE;shot=08-double-tap-back"
 # Game menu, then quicksave from it.
-DEFAULT_SCRIPT+=";key=Escape;2:shot=07-game-menu;text=e;5:shot=08-after-quicksave"
+DEFAULT_SCRIPT+=";key=Escape;2:shot=09-game-menu;text=e;5:shot=10-after-quicksave"
 DEFAULT_SCRIPT+=";log=autoplay-finished"
 SCRIPT="${SMOKE_SCRIPT:-$DEFAULT_SCRIPT}"
 
@@ -79,7 +84,9 @@ echo "==> Installing $APP"
 xcrun simctl install "$UDID" "$APP"
 
 echo "==> Launching $BUNDLE_ID"
-SIMCTL_CHILD_CATA_AUTOPLAY="$SCRIPT" xcrun simctl launch \
+SIMCTL_CHILD_CATA_AUTOPLAY="$SCRIPT" \
+SIMCTL_CHILD_CATA_IOS_HARDWARE_KEYBOARD="${SMOKE_HARDWARE_KEYBOARD:-0}" \
+    xcrun simctl launch \
     --stdout="$OUT/stdout.log" --stderr="$OUT/stderr.log" \
     "$UDID" "$BUNDLE_ID"
 
@@ -118,6 +125,8 @@ xcrun simctl io "$UDID" screenshot "$OUT/simulator-final.png" >/dev/null 2>&1 ||
 mkdir -p "$OUT/screenshots" "$OUT/config"
 cp -R "$DOCS/autoplay/." "$OUT/screenshots/" 2>/dev/null || true
 cp -R "$DOCS/config/." "$OUT/config/" 2>/dev/null || true
+echo "==> Documents"
+(cd "$DOCS" && find . -path ./autoplay -prune -o -type f -print | sort | head -n 60) || true
 
 # Crash reports for the app, if any.
 find ~/Library/Logs/DiagnosticReports -name 'Cataclysm*' -newer "$OUT/stdout.log" \
@@ -148,6 +157,11 @@ for required in 01-main-menu 03-game-start; do
         status=1
     fi
 done
+# The quicksave at the end of the default script writes the character.
+if [[ -z "${SMOKE_SCRIPT:-}" ]] && ! find "$DOCS/save" -name '*.sav*' 2>/dev/null | grep -q .; then
+    echo "error: no saved character in $DOCS/save" >&2
+    status=1
+fi
 
 xcrun simctl terminate "$UDID" "$BUNDLE_ID" >/dev/null 2>&1 || true
 xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true

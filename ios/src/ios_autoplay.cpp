@@ -14,6 +14,8 @@
 //   tap=<x>,<y>           one-finger tap at normalized window coordinates
 //   swipe=<x0>,<y0>,<x1>,<y1>  one-finger swipe
 //   tap2=<x>,<y>          two-finger tap
+//   keyboard              tap the keyboard button (show/hide the on-screen
+//                         keyboard)
 //   shot=<name>           save the window to Documents/autoplay/<name>.png
 //   log=<text>            write a marker line to stderr
 // Example: "idle=8;shot=menu;text=n;text=d;wait=DEFAULTMODE;shot=game"
@@ -50,6 +52,8 @@ std::string screenshot_dir;
 
 std::mutex screenshot_mutex;
 std::string pending_screenshot;
+
+std::atomic<bool> keyboard_toggle_requested{ false };
 
 // Updated by the game loop on every presented frame.
 std::atomic<Uint32> last_frame_tick{ 0 };
@@ -190,6 +194,9 @@ void run_step( const autoplay_step &step )
             pending_screenshot = screenshot_dir + "/" + step.arg + ".png";
         }
         push_wakeup();
+    } else if( step.action == "keyboard" ) {
+        keyboard_toggle_requested = true;
+        push_wakeup();
     } else if( step.action != "log" && step.action != "idle" && step.action != "wait" ) {
         std::fprintf( stderr, "[autoplay] unknown action %s\n", step.action.c_str() );
     }
@@ -307,7 +314,8 @@ void autoplay_start( SDL_Window *window )
     if( steps.empty() ) {
         return;
     }
-    std::fprintf( stderr, "[autoplay] %zu step(s)\n", steps.size() );
+    std::fprintf( stderr, "[autoplay] %zu step(s), hardware keyboard: %s\n", steps.size(),
+                  hardware_keyboard_connected() ? "yes" : "no" );
     timer_id = SDL_AddTimer( std::max<Uint32>( steps.front().delay_ms, 1 ), timer_callback, nullptr );
 }
 
@@ -337,6 +345,11 @@ bool autoplay_frame( std::string &path )
     path = pending_screenshot;
     pending_screenshot.clear();
     return true;
+}
+
+bool autoplay_consume_keyboard_toggle()
+{
+    return keyboard_toggle_requested.exchange( false );
 }
 
 } // namespace cata_ios

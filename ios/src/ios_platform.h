@@ -50,6 +50,9 @@ pixel_rect safe_area();
 // keyboard (0 when it is hidden).
 int keyboard_overlap();
 
+// Whether a hardware keyboard is attached. The environment variable
+// CATA_IOS_HARDWARE_KEYBOARD=0 or 1 overrides the detection for automated
+// tests: the Simulator reports the Mac's keyboard.
 bool hardware_keyboard_connected();
 
 // Light haptic tap, used as key-press feedback.
@@ -85,6 +88,8 @@ void autoplay_input_context( const std::string &category );
 // Called for every frame about to be presented. Returns true, with the PNG
 // path to write, if the frame should be saved as a screenshot.
 bool autoplay_frame( std::string &path );
+// Whether a scripted step pressed the keyboard button. Reported once.
+bool autoplay_consume_keyboard_toggle();
 
 } // namespace cata_ios
 

@@ -11,6 +11,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <sys/utsname.h>
 
 #include <SDL.h>
@@ -356,6 +358,10 @@ int keyboard_overlap()
 
 bool hardware_keyboard_connected()
 {
+    static const char *const override_value = std::getenv( "CATA_IOS_HARDWARE_KEYBOARD" );
+    if( override_value && *override_value ) {
+        return std::strcmp( override_value, "0" ) != 0;
+    }
     return GCKeyboard.coalescedKeyboard != nil;
 }
 
@@ -374,7 +380,8 @@ void show_toast( const std::string &message )
 bool consume_keyboard_toggle_request()
 {
     CataIOSOverlay *state = overlay();
-    const bool requested = state.keyboardToggleRequested;
+    const bool scripted = autoplay_consume_keyboard_toggle();
+    const bool requested = state.keyboardToggleRequested || scripted;
     state.keyboardToggleRequested = NO;
     return requested;
 }
