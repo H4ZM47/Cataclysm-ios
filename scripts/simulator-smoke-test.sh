@@ -5,7 +5,9 @@
 # Usage: scripts/simulator-smoke-test.sh [path/to/Cataclysm.app] [output-dir]
 #
 # Environment:
-#   SMOKE_DEVICE    simulator device type name to use (default: newest iPhone Pro)
+#   SMOKE_DEVICE    simulator device name to use (default: see SMOKE_DEVICE_KIND)
+#   SMOKE_DEVICE_KIND=iphone|ipad  without SMOKE_DEVICE, use the newest
+#                   iPhone Pro (default) or 11-inch iPad
 #   SMOKE_SCRIPT    CATA_AUTOPLAY script (default: start a "Play Now" game)
 #   SMOKE_TIMEOUT   seconds to wait for the script to finish (default 900)
 #   SMOKE_HARDWARE_KEYBOARD=1  test with a hardware keyboard. By default the
@@ -50,6 +52,7 @@ pick_device() {
     xcrun simctl list devices available -j | python3 -c '
 import json, os, re, sys
 want = os.environ.get("SMOKE_DEVICE", "")
+kind = os.environ.get("SMOKE_DEVICE_KIND", "iphone")
 data = json.load(sys.stdin)["devices"]
 best = None
 for runtime, devices in data.items():
@@ -61,8 +64,13 @@ for runtime, devices in data.items():
         name = d["name"]
         if want and name != want:
             continue
-        if not want and not ("iPhone" in name and "Pro" in name and "Max" not in name):
-            continue
+        if not want:
+            if kind == "ipad":
+                suitable = "iPad" in name and "11-inch" in name
+            else:
+                suitable = "iPhone" in name and "Pro" in name and "Max" not in name
+            if not suitable:
+                continue
         key = (version, name)
         if best is None or key > best[0]:
             best = (key, d["udid"], name, runtime)

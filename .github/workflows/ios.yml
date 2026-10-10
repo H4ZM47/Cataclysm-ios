@@ -78,6 +78,7 @@ jobs:
           restore-keys: ccache-${{ matrix.platform }}-
 
       - name: Build Cataclysm.app
+        id: build
         run: scripts/build-app.sh ${{ matrix.platform }} Release
 
       - name: Save compiler cache
@@ -97,12 +98,21 @@ jobs:
           SMOKE_PRINT_SCREENSHOTS: "1"
         run: scripts/simulator-smoke-test.sh build/iphonesimulator/Release-iphonesimulator/Cataclysm.app dist/smoke-test
 
+      - name: Smoke test in the iPad Simulator
+        if: ${{ !cancelled() && matrix.platform == 'iphonesimulator' && steps.build.outcome == 'success' }}
+        env:
+          SMOKE_DEVICE_KIND: ipad
+          SMOKE_PRINT_SCREENSHOTS: "1"
+        run: scripts/simulator-smoke-test.sh build/iphonesimulator/Release-iphonesimulator/Cataclysm.app dist/smoke-test-ipad
+
       - name: Upload smoke test results
         if: always() && matrix.platform == 'iphonesimulator'
         uses: actions/upload-artifact@v4
         with:
           name: smoke-test
-          path: dist/smoke-test
+          path: |
+            dist/smoke-test
+            dist/smoke-test-ipad
           if-no-files-found: ignore
 
       - name: Package unsigned IPA
