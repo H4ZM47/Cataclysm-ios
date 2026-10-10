@@ -1,0 +1,2029 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: cataclysm-ios <cataclysm-ios@localhost>
+Date: Fri, 9 Oct 2026 22:31:19 +0000
+Subject: [PATCH] Add iOS platform support
+
+Build with -DCATA_IOS (see the cataclysm-ios port) to run the SDL tiles
+build on iPhone and iPad:
+
+- Enter through SDL_main like Android. Read game data from the app
+  bundle and keep saves, config and logs in Documents/, which the Files
+  app can browse.
+- Create a full-screen high-DPI window and lay the terminal out 1:1 in
+  pixels inside the safe area (clear of the notch and rounded corners),
+  shrinking it above the on-screen keyboard when that is shown. Mouse
+  and trackpad positions are mapped from window points to terminal
+  pixels.
+- Enable the Android touch interface (quick shortcuts, virtual
+  joystick, gestures, input context tracking, shortcut persistence)
+  on iOS. JNI calls get iOS counterparts: display density, hardware
+  keyboard detection, haptics and toasts. SDL on iOS reports touches by
+  UITouch address, so fingers are mapped to Android-style indices.
+- A keyboard button overlay replaces Android's Back button: tap to
+  toggle the keyboard, hold to toggle the shortcut bar.
+- Quicksave on focus loss (if enabled) runs inside a background task so
+  iOS does not suspend the app mid-save.
+- Hide desktop-only display options and size default fonts to the
+  screen. Report the iOS version without shelling out.
+---
+ src/advanced_inv.cpp         |   2 +-
+ src/advanced_inv_pane.cpp    |   2 +-
+ src/bionics_ui.cpp           |   2 +-
+ src/cata_tiles.cpp           |   2 +-
+ src/debug.cpp                |  13 +-
+ src/debug_menu.cpp           |   2 +-
+ src/do_turn.cpp              |   4 +-
+ src/game.cpp                 |  12 +-
+ src/game.h                   |   4 +-
+ src/handle_action.cpp        |   4 +-
+ src/input.cpp                |   6 +-
+ src/input_context.cpp        |   2 +-
+ src/input_context.h          |  12 +-
+ src/input_enums.h            |   2 +-
+ src/inventory.cpp            |   4 +-
+ src/inventory_ui.cpp         |   8 +-
+ src/json_loader.cpp          |  21 ++
+ src/main.cpp                 |  20 +-
+ src/messages.cpp             |   2 +-
+ src/mutation_ui.cpp          |   2 +-
+ src/npctalk.cpp              |   4 +-
+ src/options.cpp              |  90 +++++--
+ src/output.cpp               |   2 +-
+ src/overmap_ui.cpp           |   2 +-
+ src/savegame.cpp             |   4 +-
+ src/sdltiles.cpp             | 495 +++++++++++++++++++++++++++++------
+ src/string_editor_window.cpp |   4 +-
+ src/string_input_popup.cpp   |   4 +-
+ src/uilist.cpp               |   2 +-
+ src/worldfactory.cpp         |   4 +-
+ 30 files changed, 592 insertions(+), 145 deletions(-)
+
+diff --git a/src/advanced_inv.cpp b/src/advanced_inv.cpp
+index 619358d..220da20 100644
+--- a/src/advanced_inv.cpp
++++ b/src/advanced_inv.cpp
+@@ -69,7 +69,7 @@
+ #include "units_utility.h"
+ #include "vehicle.h"
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ #   include <SDL_keyboard.h>
+ #endif
+ 
+diff --git a/src/advanced_inv_pane.cpp b/src/advanced_inv_pane.cpp
+index 4882fd7..6051647 100644
+--- a/src/advanced_inv_pane.cpp
++++ b/src/advanced_inv_pane.cpp
+@@ -29,7 +29,7 @@
+ 
+ class item_category;
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ #   include <SDL_keyboard.h>
+ #endif
+ 
+diff --git a/src/bionics_ui.cpp b/src/bionics_ui.cpp
+index 1d90766..53058ee 100644
+--- a/src/bionics_ui.cpp
++++ b/src/bionics_ui.cpp
+@@ -762,7 +762,7 @@ void avatar::power_bionics()
+         scroll_position = clamp( scroll_position, 0, max_scroll_position );
+         cursor = clamp<int>( cursor, 0, current_bionic_list->size() );
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+         ctxt.get_registered_manual_keys().clear();
+         for( size_t i = 0; i < current_bionic_list->size(); i++ ) {
+             ctxt.register_manual_key( ( *current_bionic_list )[i]->invlet,
+diff --git a/src/cata_tiles.cpp b/src/cata_tiles.cpp
+index 8fb96a1..fbaf4db 100644
+--- a/src/cata_tiles.cpp
++++ b/src/cata_tiles.cpp
+@@ -1335,7 +1335,7 @@ void cata_tiles::draw( const point &dest, const tripoint_bub_ms &center, int wid
+         return;
+     }
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     // Attempted bugfix for Google Play crash - prevent divide-by-zero if no tile
+     // width/height specified
+     if( tile_width == 0 || tile_height == 0 ) {
+diff --git a/src/debug.cpp b/src/debug.cpp
+index 091ef4b..442ce1e 100644
+--- a/src/debug.cpp
++++ b/src/debug.cpp
+@@ -85,6 +85,11 @@
+ #include "input_context.h"
+ #endif
+ 
++#if defined(CATA_IOS)
++#include "input_context.h"
++#include "ios_platform.h"
++#endif
++
+ #if (defined(__DragonFly__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__OpenBSD__)) && !defined(CATA_IS_ON_BSD)
+ #define CATA_IS_ON_BSD
+ #endif
+@@ -377,7 +382,7 @@ static void debug_error_prompt(
+         wnoutrefresh( catacurses::stdscr );
+     } );
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     input_context ctxt( "DEBUG_MSG", keyboard_mode::keycode );
+     ctxt.register_manual_key( 'C' );
+     ctxt.register_manual_key( 'I' );
+@@ -1728,6 +1733,10 @@ static std::string linux_version()
+     return output;
+ }
+ 
++#elif defined(CATA_IOS)
++
++// The iOS version comes from UIDevice, see cata_ios::os_version().
++
+ #elif defined(__APPLE__) && defined(__MACH__) && !defined(CATA_IS_ON_BSD)
+ 
+ /** Get a precise version number for MacOs systems.
+@@ -1875,6 +1884,8 @@ std::string game_info::operating_system_version()
+     return bsd_version();
+ #elif defined(__linux__)
+     return linux_version();
++#elif defined(CATA_IOS)
++    return cata_ios::os_version();
+ #elif defined(__APPLE__) && defined(__MACH__) && !defined(CATA_IS_ON_BSD)
+     return mac_os_version();
+ #elif defined(_WIN32)
+diff --git a/src/debug_menu.cpp b/src/debug_menu.cpp
+index 9823763..be6a172 100644
+--- a/src/debug_menu.cpp
++++ b/src/debug_menu.cpp
+@@ -3135,7 +3135,7 @@ static void draw_benchmark( const int max_difference )
+                                "\n| USE_TILES |  RENDERER | FRAMEBUFFER_ACCEL | USE_COLOR_MODULATED_TEXTURES | FPS |" <<
+                                "\n|:---:|:---:|:---:|:---:|:---:|\n| " <<
+                                get_option<bool>( "USE_TILES" ) << " | " <<
+-#if !defined(__ANDROID__)
++#if !defined(__ANDROID__) && !defined(CATA_IOS)
+                                get_option<std::string>( "RENDERER" ) << " | " <<
+ #else
+                                get_option<bool>( "SOFTWARE_RENDERING" ) << " | " <<
+diff --git a/src/do_turn.cpp b/src/do_turn.cpp
+index a7011f8..f194174 100644
+--- a/src/do_turn.cpp
++++ b/src/do_turn.cpp
+@@ -94,7 +94,7 @@ static const event_statistic_id event_statistic_last_words( "last_words" );
+ 
+ static const trait_id trait_HAS_NEMESIS( "HAS_NEMESIS" );
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ extern std::map<std::string, std::list<input_event>> quick_shortcuts_map;
+ extern bool add_best_key_for_action_to_quick_shortcuts( action_id action,
+         const std::string &category, bool back );
+@@ -218,7 +218,7 @@ bool cleanup_at_end()
+     MAPBUFFER.clear();
+     overmap_buffer.clear();
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     quick_shortcuts_map.clear();
+ #endif
+     return true;
+diff --git a/src/game.cpp b/src/game.cpp
+index 163f186..7c81518 100644
+--- a/src/game.cpp
++++ b/src/game.cpp
+@@ -386,7 +386,7 @@ static const zone_type_id zone_type_NO_AUTO_PICKUP( "NO_AUTO_PICKUP" );
+ 
+ static constexpr int DANGEROUS_PROXIMITY = 5;
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ extern bool add_key_to_quick_shortcuts( int key, const std::string &category, bool back ); // NOLINT
+ #endif
+ 
+@@ -2234,7 +2234,7 @@ int game::inventory_item_menu( item_location locThisItem,
+ 
+     item &oThisItem = *locThisItem;
+     if( u.has_item( oThisItem ) ) {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+         if( get_option<bool>( "ANDROID_INVENTORY_AUTOADD" ) ) {
+             add_key_to_quick_shortcuts( oThisItem.invlet, "INVENTORY", false );
+         }
+@@ -2807,7 +2807,7 @@ input_context get_default_mode_input_context()
+     ctxt.register_action( "debug_mode" );
+     ctxt.register_action( "zoom_out" );
+     ctxt.register_action( "zoom_in" );
+-#if !defined(__ANDROID__) && !defined(EMSCRIPTEN)
++#if !defined(__ANDROID__) && !defined(EMSCRIPTEN) && !defined(CATA_IOS)
+     ctxt.register_action( "toggle_fullscreen" );
+ #endif
+     ctxt.register_action( "toggle_pixel_minimap" );
+@@ -3295,7 +3295,7 @@ bool game::load( const save_t &name )
+                 _( "Finalizing" ), [&]()
+                 {
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+                     const cata_path shortcuts_filename =
+                     worldpath / ( name.base_path() + SAVE_EXTENSION_SHORTCUTS );
+                     if( file_exist( shortcuts_filename ) ) {
+@@ -3530,7 +3530,7 @@ bool game::save_player_data()
+     std::ostream & fout ) {
+         memorial().save( fout );
+     }, _( "player memorial" ) );
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     const bool saved_shortcuts = write_to_file( playerfile + SAVE_EXTENSION_SHORTCUTS, [&](
+     std::ostream & fout ) {
+         save_shortcuts( fout );
+@@ -3538,7 +3538,7 @@ bool game::save_player_data()
+ #endif
+     const bool saved_diary = u.get_avatar_diary()->store();
+     return saved_data && saved_map_memory && saved_log && saved_diary
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+            && saved_shortcuts
+ #endif
+            ;
+diff --git a/src/game.h b/src/game.h
+index 4086877..31a8c4e 100644
+--- a/src/game.h
++++ b/src/game.h
+@@ -889,7 +889,7 @@ class game
+         // Game-start procedures
+         bool load( const save_t &name ); // Load a player-specific save file
+         void load_master(); // Load the master data file, with factions &c
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+         void load_shortcuts( const cata_path &path );
+ #endif
+         bool start_game(); // Starts a new game in the active world
+@@ -901,7 +901,7 @@ class game
+         void serialize_master( std::ostream &fout );
+         // returns false if saving failed for whatever reason
+         bool save_maps();
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+         void save_shortcuts( std::ostream &fout );
+ #endif
+         // Data Initialization
+diff --git a/src/handle_action.cpp b/src/handle_action.cpp
+index a1b4f75..d8e5db5 100644
+--- a/src/handle_action.cpp
++++ b/src/handle_action.cpp
+@@ -181,7 +181,7 @@ static const zone_type_id zone_type_VEHICLE_REPAIR( "VEHICLE_REPAIR" );
+ 
+ #define dbg(x) DebugLog((x),D_GAME) << __FILE__ << ":" << __LINE__ << ": "
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ extern std::map<std::string, std::list<input_event>> quick_shortcuts_map;
+ extern bool add_best_key_for_action_to_quick_shortcuts( action_id action,
+         const std::string &category, bool back );
+@@ -3173,7 +3173,7 @@ bool game::handle_action()
+             if( act == ACTION_NULL ) {
+                 return false;
+             }
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+             if( get_option<bool>( "ANDROID_ACTIONMENU_AUTOADD" ) && ctxt.get_category() == "DEFAULTMODE" ) {
+                 add_best_key_for_action_to_quick_shortcuts( act, ctxt.get_category(), false );
+             }
+diff --git a/src/input.cpp b/src/input.cpp
+index 1c357ad..97893b4 100644
+--- a/src/input.cpp
++++ b/src/input.cpp
+@@ -60,7 +60,7 @@ bool is_mouse_enabled()
+ 
+ bool is_keycode_mode_supported()
+ {
+-#if defined(TILES) && !defined(__ANDROID__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1)
++#if defined(TILES) && !defined(__ANDROID__) && !defined(CATA_IOS)
+     return keycode_mode;
+ #else
+     return false;
+@@ -88,7 +88,7 @@ input_event::input_event( const std::set<keymod_t> &mod, const int s, const inpu
+     : type( t ), modifiers( mod ), edit_refresh( false )
+ {
+     sequence.emplace_back( s );
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     shortcut_last_used_action_counter = 0;
+ #endif
+ }
+@@ -890,7 +890,7 @@ int input_manager::get_previously_pressed_key() const
+ 
+ void input_manager::wait_for_any_key()
+ {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     input_context ctxt( "WAIT_FOR_ANY_KEY", keyboard_mode::keycode );
+ #endif
+     while( true ) {
+diff --git a/src/input_context.cpp b/src/input_context.cpp
+index 778b6f9..282bc5a 100644
+--- a/src/input_context.cpp
++++ b/src/input_context.cpp
+@@ -153,7 +153,7 @@ const std::string &input_context::input_to_action( const input_event &inp ) cons
+     return CATA_ERROR;
+ }
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ std::list<input_context *> input_context::input_context_stack;
+ 
+ void input_context::register_manual_key( manual_key mk )
+diff --git a/src/input_context.h b/src/input_context.h
+index 7b24dcf..9d83ef7 100644
+--- a/src/input_context.h
++++ b/src/input_context.h
+@@ -8,7 +8,7 @@
+ #include <string_view>
+ #include <vector>
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ #include <list>
+ #endif
+ 
+@@ -41,14 +41,14 @@ class input_context
+ {
+         friend class keybindings_ui;
+     public:
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+         // Whatever's on top is our current input context.
+         static std::list<input_context *> input_context_stack;
+ #endif
+ 
+         input_context() : registered_any_input( false ), category( "default" ),
+             coordinate_input_received( false ), handling_coordinate_input( false ) {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+             input_context_stack.push_back( this );
+             allow_text_entry = false;
+ #endif
+@@ -61,14 +61,14 @@ class input_context
+             : registered_any_input( false ), category( category ),
+               coordinate_input_received( false ), handling_coordinate_input( false ),
+               preferred_keyboard_mode( preferred_keyboard_mode ) {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+             input_context_stack.push_back( this );
+             allow_text_entry = false;
+ #endif
+             register_action( "toggle_language_to_en" );
+         }
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+         virtual ~input_context() {
+             input_context_stack.remove( this );
+         }
+@@ -416,7 +416,7 @@ class input_context
+         input_event first_unassigned_hotkey( const hotkey_queue &queue ) const;
+         input_event next_unassigned_hotkey( const hotkey_queue &queue, const input_event &prev ) const;
+     private:
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+         std::vector<manual_key> registered_manual_keys;
+ #endif
+         std::vector<std::string> registered_actions;
+diff --git a/src/input_enums.h b/src/input_enums.h
+index 314a0cd..be7f788 100644
+--- a/src/input_enums.h
++++ b/src/input_enums.h
+@@ -78,7 +78,7 @@ struct input_event {
+     std::string edit;
+     bool edit_refresh;
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     // Used exclusively by the quick shortcuts to determine how stale a shortcut is
+     int shortcut_last_used_action_counter = 0;
+ #endif
+diff --git a/src/inventory.cpp b/src/inventory.cpp
+index 04c7c99..391de3a 100644
+--- a/src/inventory.cpp
++++ b/src/inventory.cpp
+@@ -349,7 +349,7 @@ void inventory::push_back( const item &newit )
+     add_item( newit );
+ }
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ extern void remove_stale_inventory_quick_shortcuts();
+ #endif
+ 
+@@ -444,7 +444,7 @@ void inventory::restack( Character &p )
+     }
+     items.sort( stack_compare );
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     remove_stale_inventory_quick_shortcuts();
+ #endif
+ }
+diff --git a/src/inventory_ui.cpp b/src/inventory_ui.cpp
+index 1fd3b2a..2883f9b 100644
+--- a/src/inventory_ui.cpp
++++ b/src/inventory_ui.cpp
+@@ -63,7 +63,7 @@
+ #include "vehicle_selector.h"
+ #include "vpart_position.h"
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ #include <SDL_keyboard.h>
+ #endif
+ 
+@@ -3909,7 +3909,7 @@ inventory_drop_selector::inventory_drop_selector( Character &p,
+     inventory_multiselector( p, preset, selection_column_title ),
+     warn_liquid( warn_liquid )
+ {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     // allow user to type a drop number without dismissing virtual keyboard after each keypress
+     ctxt.allow_text_entry = true;
+ #endif
+@@ -3921,7 +3921,7 @@ inventory_insert_selector::inventory_insert_selector( Character &p,
+         const bool warn_liquid ) :
+     inventory_drop_selector( p, preset, selection_column_title, warn_liquid )
+ {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     // allow user to type a drop number without dismissing virtual keyboard after each keypress
+     ctxt.allow_text_entry = true;
+ #endif
+@@ -4247,7 +4247,7 @@ pickup_selector::pickup_selector( Character &p, const inventory_selector_preset
+ {
+     ctxt.register_action( "WEAR" );
+     ctxt.register_action( "WIELD" );
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     // allow user to type a drop number without dismissing virtual keyboard after each keypress
+     ctxt.allow_text_entry = true;
+ #endif
+diff --git a/src/json_loader.cpp b/src/json_loader.cpp
+index 1863c50..6d768a0 100644
+--- a/src/json_loader.cpp
++++ b/src/json_loader.cpp
+@@ -9,11 +9,28 @@
+ #include "flexbuffer_json.h"
+ #include "path_info.h"
+ 
++#if defined(CATA_IOS)
++#include "ios_platform.h"
++#endif
++
+ namespace
+ {
++#if defined(CATA_IOS)
++// The game data is inside the read-only app bundle, so the parsed-JSON
++// caches for it go to the app's Caches directory instead.
++std::filesystem::path bundle_cache_path( const char *name )
++{
++    return std::filesystem::u8path( cata_ios::cache_dir() + name );
++}
++#endif
++
+ flexbuffer_cache &base_cache()
+ {
++#if defined(CATA_IOS)
++    static flexbuffer_cache cache{ bundle_cache_path( "base" ), PATH_INFO::base_path().get_unrelative_path() };
++#else
+     static flexbuffer_cache cache{ ( PATH_INFO::base_path() / "cache" ).get_unrelative_path(), PATH_INFO::base_path().get_unrelative_path() };
++#endif
+     return cache;
+ }
+ 
+@@ -25,7 +42,11 @@ flexbuffer_cache &config_cache()
+ 
+ flexbuffer_cache &data_cache()
+ {
++#if defined(CATA_IOS)
++    static flexbuffer_cache cache{ bundle_cache_path( "data" ), PATH_INFO::datadir_path().get_unrelative_path() };
++#else
+     static flexbuffer_cache cache{ ( PATH_INFO::datadir_path() / "cache" ).get_unrelative_path(), PATH_INFO::datadir_path().get_unrelative_path() };
++#endif
+     return cache;
+ }
+ 
+diff --git a/src/main.cpp b/src/main.cpp
+index cd7b94e..0ad8731 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -133,6 +133,12 @@ int start_logger( const char *app_name )
+ 
+ #endif //__ANDROID__
+ 
++#if defined(CATA_IOS)
++#include <unistd.h>
++
++#include "ios_platform.h"
++#endif
++
+ namespace
+ {
+ 
+@@ -619,7 +625,8 @@ int APIENTRY WinMain( _In_ HINSTANCE /* hInstance */, _In_opt_ HINSTANCE /* hPre
+ {
+     int argc = __argc;
+     char **argv = __argv;
+-#elif defined(__ANDROID__)
++#elif defined(__ANDROID__) || defined(CATA_IOS)
++// SDL's platform entry point (SDL2main) calls this once the app is running.
+ extern "C" int SDL_main( int argc, char **argv ) {
+ #else
+ int main( int argc, const char *argv[] )
+@@ -663,6 +670,14 @@ int main( int argc, const char *argv[] )
+     std::string external_storage_path( SDL_AndroidGetExternalStoragePath() );
+ 
+     PATH_INFO::init_base_path( external_storage_path );
++#elif defined(CATA_IOS)
++    // Game data ships read-only inside the app bundle. Run from there so the
++    // few relative paths the game uses (e.g. touch control images) resolve.
++    const std::string ios_resource_dir = cata_ios::resource_dir();
++    if( chdir( ios_resource_dir.c_str() ) != 0 ) {
++        printf( "Can't change directory to %s\n", ios_resource_dir.c_str() );
++    }
++    PATH_INFO::init_base_path( ios_resource_dir );
+ #else
+     // Set default file paths
+ #if defined(PREFIX)
+@@ -674,6 +689,9 @@ int main( int argc, const char *argv[] )
+ 
+ #if defined(__ANDROID__)
+     PATH_INFO::init_user_dir( external_storage_path );
++#elif defined(CATA_IOS)
++    // Saves, config, mods and logs live in Documents/, visible in the Files app.
++    PATH_INFO::init_user_dir( cata_ios::user_dir() );
+ #else
+ #   if defined(USE_HOME_DIR) || defined(USE_XDG_DIR) || defined(EMSCRIPTEN)
+     PATH_INFO::init_user_dir( "" );
+diff --git a/src/messages.cpp b/src/messages.cpp
+index dfa62be..6cebd44 100644
+--- a/src/messages.cpp
++++ b/src/messages.cpp
+@@ -36,7 +36,7 @@
+ #include "ui_manager.h"
+ #include "viewer.h"
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ #include <SDL_keyboard.h>
+ #endif
+ 
+diff --git a/src/mutation_ui.cpp b/src/mutation_ui.cpp
+index c4fc8dd..7dc2c88 100644
+--- a/src/mutation_ui.cpp
++++ b/src/mutation_ui.cpp
+@@ -227,7 +227,7 @@ void avatar::power_mutations()
+     ctxt.register_action( "CONFIRM" );
+     ctxt.register_action( "HELP_KEYBINDINGS" );
+     ctxt.register_action( "QUIT" );
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     for( const auto &p : passive ) {
+         ctxt.register_manual_key( cached_mutations[p].key, p.obj().name() );
+     }
+diff --git a/src/npctalk.cpp b/src/npctalk.cpp
+index b323951..2e5bc8a 100644
+--- a/src/npctalk.cpp
++++ b/src/npctalk.cpp
+@@ -2964,7 +2964,7 @@ talk_topic dialogue::opt( dialogue_window &d_win, const talk_topic &topic )
+     std::vector<talk_data> response_lines;
+     std::vector<input_event> response_hotkeys;
+     const auto generate_response_lines = [&]() {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+         ctxt.get_registered_manual_keys().clear();
+ #endif
+         const hotkey_queue &queue = hotkey_queue::alphabets();
+@@ -2975,7 +2975,7 @@ talk_topic dialogue::opt( dialogue_window &d_win, const talk_topic &topic )
+             const talk_data &td = response.create_option_line( *this, evt, d_win.is_computer );
+             response_lines.emplace_back( td );
+             response_hotkeys.emplace_back( evt );
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+             ctxt.register_manual_key( evt.get_first_input(), td.text );
+ #endif
+             evt = ctxt.next_unassigned_hotkey( queue, evt );
+diff --git a/src/options.cpp b/src/options.cpp
+index a671b4a..2be7c46 100644
+--- a/src/options.cpp
++++ b/src/options.cpp
+@@ -48,6 +48,10 @@
+ #include <jni.h>
+ #endif
+ 
++#if defined(CATA_IOS)
++#include "ios_platform.h"
++#endif
++
+ #include <algorithm>
+ #include <cstdlib>
+ #include <memory>
+@@ -223,6 +227,8 @@ options_manager::options_manager()
+ 
+ #if defined(__ANDROID__)
+     pages_.emplace_back( "android", to_translation( "Android" ) );
++#elif defined(CATA_IOS)
++    pages_.emplace_back( "android", to_translation( "Touch" ) );
+ #endif
+ 
+     enable_json( "DEFAULT_REGION" );
+@@ -2348,14 +2354,20 @@ void options_manager::add_options_graphics()
+     add_option_group( "graphics", Group( "term_opts", to_translation( "Terminal display options" ),
+                                          to_translation( "Options regarding terminal display." ) ),
+     [&]( const std::string & page_id ) {
++#if defined(CATA_IOS)
++        // The terminal fills the screen; its size follows from the font size.
++        const copt_hide_t terminal_size_hide = COPT_ALWAYS_HIDE;
++#else
++        const copt_hide_t terminal_size_hide = COPT_POSIX_CURSES_HIDE;
++#endif
+         add( "TERMINAL_X", page_id, to_translation( "Terminal width" ),
+              to_translation( "Set the size of the terminal along the X axis." ),
+-             80, 960, 80, COPT_POSIX_CURSES_HIDE
++             80, 960, 80, terminal_size_hide
+            );
+ 
+         add( "TERMINAL_Y", page_id, to_translation( "Terminal height" ),
+              to_translation( "Set the size of the terminal along the Y axis." ),
+-             24, 270, 24, COPT_POSIX_CURSES_HIDE
++             24, 270, 24, terminal_size_hide
+            );
+     } );
+ 
+@@ -2365,6 +2377,15 @@ void options_manager::add_options_graphics()
+     add_option_group( "graphics", Group( "font_params", to_translation( "Font settings" ),
+                                          to_translation( "Font display settings.  To change font type or source file, edit fonts.json in config directory." ) ),
+     [&]( const std::string & page_id ) {
++#if defined(CATA_IOS)
++        // Scale the default cell size with the screen so a fresh install is
++        // readable and fills the display.
++        const int default_font_height = cata_ios::default_font_height();
++#else
++        const int default_font_height = 16;
++#endif
++        const int default_font_width = default_font_height / 2;
++
+         add( "FONT_BLENDING", page_id, to_translation( "Font blending" ),
+              to_translation( "If true, vector fonts may look better." ),
+              false, COPT_CURSES_HIDE
+@@ -2372,47 +2393,47 @@ void options_manager::add_options_graphics()
+ 
+         add( "FONT_WIDTH", page_id, to_translation( "Font width" ),
+              to_translation( "Set the font width.  Requires restart." ),
+-             6, 100, 8, COPT_CURSES_HIDE
++             6, 100, default_font_width, COPT_CURSES_HIDE
+            );
+ 
+         add( "FONT_HEIGHT", page_id, to_translation( "Font height" ),
+              to_translation( "Set the font height.  Requires restart." ),
+-             8, 100, 16, COPT_CURSES_HIDE
++             8, 100, default_font_height, COPT_CURSES_HIDE
+            );
+ 
+         add( "FONT_SIZE", page_id, to_translation( "Font size" ),
+              to_translation( "Set the font size.  Requires restart." ),
+-             8, 100, 16, COPT_CURSES_HIDE
++             8, 100, default_font_height, COPT_CURSES_HIDE
+            );
+ 
+         add( "MAP_FONT_WIDTH", page_id, to_translation( "Map font width" ),
+              to_translation( "Set the map font width.  Requires restart." ),
+-             6, 100, 16, COPT_CURSES_HIDE
++             6, 100, default_font_height, COPT_CURSES_HIDE
+            );
+ 
+         add( "MAP_FONT_HEIGHT", page_id, to_translation( "Map font height" ),
+              to_translation( "Set the map font height.  Requires restart." ),
+-             8, 100, 16, COPT_CURSES_HIDE
++             8, 100, default_font_height, COPT_CURSES_HIDE
+            );
+ 
+         add( "MAP_FONT_SIZE", page_id, to_translation( "Map font size" ),
+              to_translation( "Set the map font size.  Requires restart." ),
+-             8, 100, 16, COPT_CURSES_HIDE
++             8, 100, default_font_height, COPT_CURSES_HIDE
+            );
+ 
+         add( "OVERMAP_FONT_WIDTH", page_id, to_translation( "Overmap font width" ),
+              to_translation( "Set the overmap font width.  Requires restart." ),
+-             6, 100, 16, COPT_CURSES_HIDE
++             6, 100, default_font_height, COPT_CURSES_HIDE
+            );
+ 
+         add( "OVERMAP_FONT_HEIGHT", page_id, to_translation( "Overmap font height" ),
+              to_translation( "Set the overmap font height.  Requires restart." ),
+-             8, 100, 16, COPT_CURSES_HIDE
++             8, 100, default_font_height, COPT_CURSES_HIDE
+            );
+ 
+         add( "OVERMAP_FONT_SIZE", page_id, to_translation( "Overmap font size" ),
+              to_translation( "Set the overmap font size.  Requires restart." ),
+-             8, 100, 16, COPT_CURSES_HIDE
++             8, 100, default_font_height, COPT_CURSES_HIDE
+            );
+ 
+         add( "USE_DRAW_ASCII_LINES_ROUTINE", page_id, to_translation( "SDL ASCII lines" ),
+@@ -2667,7 +2688,7 @@ void options_manager::add_options_graphics()
+            );
+ #endif
+ 
+-#if !defined(__ANDROID__)
++#if !defined(__ANDROID__) && !defined(CATA_IOS)
+ #   if !defined(TILES)
+         // No renderer selection in non-TILES mode
+         add( "RENDERER", page_id, to_translation( "Renderer" ),
+@@ -2692,8 +2713,12 @@ void options_manager::add_options_graphics()
+ #else
+         add( "SOFTWARE_RENDERING", page_id, to_translation( "Software rendering" ),
+              to_translation( "Use software renderer instead of graphics card acceleration.  Requires restart." ),
++#if defined(__ANDROID__)
+              // take default setting from pre-game settings screen - important as both software + hardware rendering have issues with specific devices
+              android_get_default_setting( "Software rendering", false ),
++#else
++             false,
++#endif
+              COPT_CURSES_HIDE
+            );
+ #endif
+@@ -2709,7 +2734,7 @@ void options_manager::add_options_graphics()
+              false, COPT_CURSES_HIDE
+            );
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+         get_option( "FRAMEBUFFER_ACCEL" ).setPrerequisite( "SOFTWARE_RENDERING" );
+ #else
+         get_option( "FRAMEBUFFER_ACCEL" ).setPrerequisite( "RENDERER", "software" );
+@@ -2731,7 +2756,7 @@ void options_manager::add_options_graphics()
+         },
+         "none", COPT_CURSES_HIDE );
+ 
+-#if !defined(__ANDROID__)
++#if !defined(__ANDROID__) && !defined(CATA_IOS)
+         add( "SCALING_FACTOR", page_id, to_translation( "Scaling factor" ),
+         to_translation( "Factor by which to scale the display.  Requires restart." ), {
+             { "1", to_translation( "1x" )},
+@@ -2904,7 +2929,7 @@ void options_manager::add_options_debug()
+ 
+ void options_manager::add_options_android()
+ {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     const auto add_empty_line = [&]() {
+         this->add_empty_line( "android" );
+     };
+@@ -2917,9 +2942,15 @@ void options_manager::add_options_android()
+     add_empty_line();
+ 
+     add_option_group( "android", Group( "android_keyboard_opts",
++#if defined(__ANDROID__)
+                                         to_translation( "Android keyboard options" ),
+                                         to_translation( "Options regarding Android keyboard." ) ),
++#else
++                                        to_translation( "Keyboard options" ),
++                                        to_translation( "Options regarding the on-screen keyboard." ) ),
++#endif
+     [&]( const std::string & page_id ) {
++#if defined(__ANDROID__)
+         add( "ANDROID_TRAP_BACK_BUTTON", page_id, to_translation( "Trap Back button" ),
+              to_translation( "If true, the back button will NOT back out of the app and will be passed to the application as SDL_SCANCODE_AC_BACK.  Requires restart." ),
+              // take default setting from pre-game settings screen - important as there are issues with Back button on Android 9 with specific devices
+@@ -2931,6 +2962,7 @@ void options_manager::add_options_android()
+                              "such as popup messages and yes/no dialogs." ),
+              android_get_default_setting( "Native Android UI", true )
+            );
++#endif
+ 
+         add( "ANDROID_AUTO_KEYBOARD", page_id, to_translation( "Auto-manage virtual keyboard" ),
+              to_translation( "If true, automatically show/hide the virtual keyboard when necessary based on context.  If false, virtual keyboard must be toggled manually." ),
+@@ -2946,16 +2978,28 @@ void options_manager::add_options_android()
+ 
+     add_empty_line();
+ 
++#if defined(__ANDROID__)
+     add( "ANDROID_VIBRATION", "android", to_translation( "Vibration duration" ),
+          to_translation( "If non-zero, vibrate the device for this long on input, in milliseconds.  Ignored if hardware keyboard connected." ),
+          0, 200, 10
+        );
++#else
++    add( "ANDROID_VIBRATION", "android", to_translation( "Haptic feedback" ),
++         to_translation( "If non-zero, play a light haptic tap on input.  Ignored if hardware keyboard connected." ),
++         0, 200, 0
++       );
++#endif
+ 
+     add_empty_line();
+ 
+     add_option_group( "android", Group( "joystick_android_opts",
++#if defined(__ANDROID__)
+                                         to_translation( "Android joystick options" ),
+                                         to_translation( "Options regarding Android joystick." ) ),
++#else
++                                        to_translation( "Virtual joystick options" ),
++                                        to_translation( "Options regarding the virtual joystick." ) ),
++#endif
+     [&]( const std::string & page_id ) {
+         add( "ANDROID_SHOW_VIRTUAL_JOYSTICK", page_id, to_translation( "Show virtual joystick" ),
+              to_translation( "If true, show the virtual joystick when touching and holding the screen.  Gives a visual indicator of deadzone and stick deflection." ),
+@@ -3015,8 +3059,13 @@ void options_manager::add_options_android()
+     add_empty_line();
+ 
+     add_option_group( "android", Group( "shortcut_android_opts",
++#if defined(__ANDROID__)
+                                         to_translation( "Android shortcut options" ),
+                                         to_translation( "Options regarding Android shortcut." ) ),
++#else
++                                        to_translation( "Shortcut options" ),
++                                        to_translation( "Options regarding on-screen shortcuts." ) ),
++#endif
+     [&]( const std::string & page_id ) {
+         add( "ANDROID_SHORTCUT_DEFAULTS", page_id, to_translation( "Default gameplay shortcuts" ),
+              to_translation( "The default set of gameplay shortcuts to show.  Used on starting a new game and whenever all gameplay shortcuts are removed." ),
+@@ -3039,8 +3088,13 @@ void options_manager::add_options_android()
+     add_empty_line();
+ 
+     add_option_group( "android", Group( "gestures_android_opts",
++#if defined(__ANDROID__)
+                                         to_translation( "Android gestures options" ),
+                                         to_translation( "Options regarding Android gestures." ) ),
++#else
++                                        to_translation( "Gesture options" ),
++                                        to_translation( "Options regarding touch gestures." ) ),
++#endif
+     [&]( const std::string & page_id ) {
+         add( "ANDROID_TAP_KEY", page_id, to_translation( "Tap key (in-game)" ),
+              to_translation( "The key to press when tapping during gameplay." ),
+@@ -3089,7 +3143,11 @@ void options_manager::add_options_android()
+     add_empty_line();
+ 
+     add_option_group( "android", Group( "shortcut_android_in_game_opts",
++#if defined(__ANDROID__)
+                                         to_translation( "Android shortcut options" ),
++#else
++                                        to_translation( "In-game shortcut options" ),
++#endif
+                                         to_translation( "Options regarding in-game shortcut." ) ),
+     [&]( const std::string & page_id ) {
+         add( "ANDROID_SHORTCUT_AUTOADD", page_id,
+@@ -3921,7 +3979,7 @@ std::string options_manager::show( bool ingame, const bool world_options_only, b
+     calendar::set_eternal_night( ::get_option<std::string>( "ETERNAL_TIME_OF_DAY" ) == "night" );
+     calendar::set_eternal_day( ::get_option<std::string>( "ETERNAL_TIME_OF_DAY" ) == "day" );
+ 
+-#if !defined(EMSCRIPTEN) && !defined(__ANDROID__) && !defined(TUI)
++#if !defined(EMSCRIPTEN) && !defined(__ANDROID__) && !defined(CATA_IOS) && !defined(TUI)
+     if( terminal_size_changed ) {
+         int scaling_factor = get_scaling_factor();
+         point TERM( ::get_option<int>( "TERMINAL_X" ), ::get_option<int>( "TERMINAL_Y" ) );
+diff --git a/src/output.cpp b/src/output.cpp
+index 5fd9265..cd274fc 100644
+--- a/src/output.cpp
++++ b/src/output.cpp
+@@ -2943,7 +2943,7 @@ void insert_table( const catacurses::window &w, int pad, int line, int columns,
+     int div = columns - 1;
+     int offset = 0;
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     input_context ctxt( "INSERT_TABLE" );
+ #endif
+     wattron( w, FG );
+diff --git a/src/overmap_ui.cpp b/src/overmap_ui.cpp
+index 84311ec..db0111f 100644
+--- a/src/overmap_ui.cpp
++++ b/src/overmap_ui.cpp
+@@ -102,7 +102,7 @@ static const oter_type_str_id oter_type_forest_trail( "forest_trail" );
+ static const trait_id trait_DEBUG_CLAIRVOYANCE( "DEBUG_CLAIRVOYANCE" );
+ static const trait_id trait_DEBUG_NIGHTVISION( "DEBUG_NIGHTVISION" );
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ #include <SDL_keyboard.h>
+ #endif
+ 
+diff --git a/src/savegame.cpp b/src/savegame.cpp
+index 839ccd3..a3d0b5c 100644
+--- a/src/savegame.cpp
++++ b/src/savegame.cpp
+@@ -59,7 +59,7 @@ static const oter_str_id oter_omt_obsolete( "omt_obsolete" );
+ 
+ static const string_id<overmap_connection> overmap_connection_local_road( "local_road" );
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ #include "input.h"
+ 
+ extern std::map<std::string, std::list<input_event>> quick_shortcuts_map;
+@@ -333,7 +333,7 @@ void scent_map::deserialize( const std::string &data, bool is_type )
+     }
+ }
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ ///// quick shortcuts
+ void game::load_shortcuts( const cata_path &path )
+ {
+diff --git a/src/sdltiles.cpp b/src/sdltiles.cpp
+index 020cf3d..6bcc8e8 100644
+--- a/src/sdltiles.cpp
++++ b/src/sdltiles.cpp
+@@ -91,7 +91,9 @@ std::unique_ptr<cataimgui::client> imclient;
+ 
+ #if defined(__ANDROID__)
+ #include <jni.h>
++#endif
+ 
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ #include "action.h"
+ #include "inventory.h"
+ #include "map.h"
+@@ -100,6 +102,10 @@ std::unique_ptr<cataimgui::client> imclient;
+ #include "worldfactory.h"
+ #endif
+ 
++#if defined(CATA_IOS)
++#include "ios_platform.h"
++#endif
++
+ #if defined(EMSCRIPTEN)
+ #include <emscripten.h>
+ #endif
+@@ -136,7 +142,7 @@ static SDL_Renderer_Ptr renderer;
+ static SDL_PixelFormat_Ptr format;
+ static SDL_Texture_Ptr display_buffer;
+ static GeometryRenderer_Ptr geometry;
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ static SDL_Texture_Ptr touch_joystick;
+ #endif
+ static int WindowWidth;        //Width of the actual window, not the curses window
+@@ -212,6 +218,18 @@ static void InitSDL()
+     }
+ #endif
+ 
++#if defined(CATA_IOS)
++    // Touches drive the touch controls; don't also turn them into mouse
++    // clicks (a trackpad or mouse on iPad still produces mouse events).
++    SDL_SetHint( SDL_HINT_TOUCH_MOUSE_EVENTS, "0" );
++    SDL_SetHint( SDL_HINT_MOUSE_TOUCH_EVENTS, "0" );
++    SDL_SetHint( SDL_HINT_ACCELEROMETER_AS_JOYSTICK, "0" );
++    SDL_SetHint( SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight" );
++    // Swipes that start near the screen edge first reveal the home indicator
++    // instead of leaving the game.
++    SDL_SetHint( SDL_HINT_IOS_HIDE_HOME_INDICATOR, "2" );
++#endif
++
+     ret = SDL_Init( init_flags );
+     throwErrorIf( ret != 0, "SDL_Init failed" );
+ 
+@@ -235,8 +253,17 @@ static void InitSDL()
+ static bool SetupRenderTarget()
+ {
+     SetRenderDrawBlendMode( renderer, SDL_BLENDMODE_NONE );
++#if defined(CATA_IOS)
++    // The window spans the whole screen, including notches and rounded
++    // corners; the terminal only covers the safe area inside it.
++    const int buffer_width = TERMINAL_WIDTH * fontwidth;
++    const int buffer_height = TERMINAL_HEIGHT * fontheight;
++#else
++    const int buffer_width = WindowWidth / scaling_factor;
++    const int buffer_height = WindowHeight / scaling_factor;
++#endif
+     display_buffer.reset( SDL_CreateTexture( renderer.get(), SDL_PIXELFORMAT_ARGB8888,
+-                          SDL_TEXTUREACCESS_TARGET, WindowWidth / scaling_factor, WindowHeight / scaling_factor ) );
++                          SDL_TEXTUREACCESS_TARGET, buffer_width, buffer_height ) );
+     if( printErrorIf( !display_buffer, "Failed to create window buffer" ) ) {
+         return false;
+     }
+@@ -249,6 +276,57 @@ static bool SetupRenderTarget()
+     return true;
+ }
+ 
++#if defined(CATA_IOS)
++float android_get_display_density();
++
++// The SDL window covers the whole screen. The terminal is drawn inside the
++// notch and rounded corners (but may extend under the home indicator), the
++// touch controls inside the fully unobstructed safe area. Both in pixels.
++static SDL_Rect ios_terminal_area = { 0, 0, 0, 0 };
++static SDL_Rect ios_safe_area = { 0, 0, 0, 0 };
++// Pixels at the bottom of the window covered by the on-screen keyboard.
++static int ios_keyboard_overlap = 0;
++
++static void ios_update_window_metrics()
++{
++    int width = 0;
++    int height = 0;
++    SDL_GetWindowSizeInPixels( ::window.get(), &width, &height );
++    WindowWidth = width;
++    WindowHeight = height;
++    const auto to_sdl_rect = [&]( const cata_ios::pixel_rect & r ) {
++        if( r.w > 0 && r.h > 0 ) {
++            return SDL_Rect{ r.x, r.y, r.w, r.h };
++        }
++        return SDL_Rect{ 0, 0, width, height };
++    };
++    ios_terminal_area = to_sdl_rect( cata_ios::terminal_area() );
++    ios_safe_area = to_sdl_rect( cata_ios::safe_area() );
++}
++
++// Height of the quick shortcut bar in pixels (see get_quick_shortcut_dimensions).
++static int ios_quick_shortcut_height()
++{
++    const float shortcut_dimensions_authored_density = 3.0f;
++    return static_cast<int>( std::floor( android_get_display_density() /
++                                         shortcut_dimensions_authored_density * get_option<int>( "ANDROID_SHORTCUT_HEIGHT" ) ) );
++}
++
++// Fill the terminal area with as many whole character cells as fit, so the
++// terminal is drawn without scaling.
++static void ios_fit_terminal_to_safe_area()
++{
++    int usable_height = ios_terminal_area.h;
++    if( !get_option<bool>( "ANDROID_SHORTCUT_OVERLAP" ) ) {
++        // Stop above the shortcut bar, which sits at the bottom of the safe area.
++        usable_height = std::min( usable_height, ios_safe_area.y + ios_safe_area.h -
++                                  ios_quick_shortcut_height() - ios_terminal_area.y );
++    }
++    TERMINAL_WIDTH = std::max( ios_terminal_area.w / fontwidth, EVEN_MINIMUM_TERM_WIDTH );
++    TERMINAL_HEIGHT = std::max( usable_height / fontheight, EVEN_MINIMUM_TERM_HEIGHT );
++}
++#endif
++
+ //Registers, creates, and shows the Window!!
+ static void WinCreate()
+ {
+@@ -262,7 +340,7 @@ static void WinCreate()
+         SDL_SetHint( SDL_HINT_RENDER_SCALE_QUALITY, get_option<std::string>( "SCALING_MODE" ).c_str() );
+     }
+ 
+-#if !defined(__ANDROID__) && !defined(EMSCRIPTEN)
++#if !defined(__ANDROID__) && !defined(EMSCRIPTEN) && !defined(CATA_IOS)
+     if( get_option<std::string>( "FULLSCREEN" ) == "fullscreen" ) {
+         window_flags |= SDL_WINDOW_FULLSCREEN;
+         fullscreen = true;
+@@ -286,11 +364,24 @@ static void WinCreate()
+     // Without this, the game only displays in the top-left 1/4 of the window.
+     window_flags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_MAXIMIZED;
+ #endif
++#if defined(CATA_IOS)
++    // iOS windows always cover the screen; render at full pixel density.
++    window_flags = SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_RESIZABLE;
++#endif
+ 
+     int display = std::stoi( get_option<std::string>( "DISPLAY" ) );
+     if( display < 0 || display >= SDL_GetNumVideoDisplays() ) {
+         display = 0;
+     }
++#if defined(CATA_IOS)
++    // Create the window at its final full-screen size rather than at the
++    // configured terminal size; some backends keep the initial drawable size.
++    SDL_Rect display_bounds;
++    if( SDL_GetDisplayBounds( display, &display_bounds ) == 0 ) {
++        WindowWidth = display_bounds.w;
++        WindowHeight = display_bounds.h;
++    }
++#endif
+ 
+ #if defined(__ANDROID__)
+     // Bugfix for red screen on Samsung S3/Mali
+@@ -323,7 +414,17 @@ static void WinCreate()
+                                     ) );
+     throwErrorIf( !::window, "SDL_CreateWindow failed" );
+ 
+-#if !defined(__ANDROID__) && !defined(EMSCRIPTEN)
++#if defined(CATA_IOS)
++    cata_ios::attach_window( ::window.get() );
++    ios_update_window_metrics();
++    ios_fit_terminal_to_safe_area();
++    DebugLog( D_INFO, DC_ALL ) << "[iOS] window " << WindowWidth << "x" << WindowHeight
++                               << " px, terminal area " << ios_terminal_area.w << "x" << ios_terminal_area.h
++                               << "+" << ios_terminal_area.x << "+" << ios_terminal_area.y
++                               << ", terminal " << TERMINAL_WIDTH << "x" << TERMINAL_HEIGHT
++                               << " cells of " << fontwidth << "x" << fontheight << " px";
++    cata_ios::autoplay_start( ::window.get() );
++#elif !defined(__ANDROID__) && !defined(EMSCRIPTEN)
+     // On Android SDL seems janky in windowed mode so we're fullscreen all the time.
+     // Fullscreen mode is now modified so it obeys terminal width/height, rather than
+     // overwriting it with this calculation.
+@@ -340,7 +441,7 @@ static void WinCreate()
+     throwErrorIf( !format, "SDL_AllocFormat failed" );
+ 
+     int renderer_id = -1;
+-#if !defined(__ANDROID__)
++#if !defined(__ANDROID__) && !defined(CATA_IOS)
+     bool software_renderer = get_option<std::string>( "RENDERER" ).empty();
+     std::string renderer_name;
+     if( software_renderer ) {
+@@ -407,7 +508,8 @@ static void WinCreate()
+         || window_flags & SDL_WINDOW_MAXIMIZED ) {
+         SDL_GetWindowSize( ::window.get(), &WindowWidth, &WindowHeight );
+     }
+-
++#endif
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     // Load virtual joystick texture
+     touch_joystick = CreateTextureFromSurface( renderer, load_image( "android/joystick.png" ) );
+ #endif
+@@ -443,7 +545,7 @@ static void WinCreate()
+ 
+ static void WinDestroy()
+ {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     touch_joystick.reset();
+ #endif
+     imclient.reset();
+@@ -463,7 +565,7 @@ static const SDL_Color &color_as_sdl( const unsigned char color )
+     return windowsPalette[color];
+ }
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ void draw_terminal_size_preview();
+ void draw_quick_shortcuts();
+ void draw_virtual_joystick();
+@@ -474,7 +576,9 @@ static bool quick_shortcuts_enabled = true;
+ static int preview_terminal_width = -1;
+ static int preview_terminal_height = -1;
+ static uint32_t preview_terminal_change_time = 0;
++#endif
+ 
++#if defined(__ANDROID__)
+ extern "C" {
+ 
+     static bool visible_display_frame_dirty = false;
+@@ -534,6 +638,96 @@ SDL_Rect get_android_render_rect( float DisplayBufferWidth, float DisplayBufferH
+     return dstrect;
+ }
+ 
++#elif defined(CATA_IOS)
++static bool visible_display_frame_dirty = false;
++// Set when the window size or safe area no longer match the current layout.
++static bool ios_layout_dirty = false;
++
++// Track the on-screen keyboard so the terminal can be shrunk above it, and
++// notice layout changes that arrive without a window event: UIKit only
++// reports safe area insets once the view has been laid out, which can be
++// after the window was created.
++static void ios_poll_layout()
++{
++    const int overlap = cata_ios::keyboard_overlap();
++    if( overlap != ios_keyboard_overlap ) {
++        ios_keyboard_overlap = overlap;
++        visible_display_frame_dirty = true;
++    }
++    const SDL_Rect old_terminal_area = ios_terminal_area;
++    const SDL_Rect old_safe_area = ios_safe_area;
++    const int old_width = WindowWidth;
++    const int old_height = WindowHeight;
++    ios_update_window_metrics();
++    if( ios_terminal_area != old_terminal_area || ios_safe_area != old_safe_area ||
++        WindowWidth != old_width || WindowHeight != old_height ) {
++        ios_layout_dirty = true;
++    }
++}
++
++SDL_Rect get_android_render_rect( float DisplayBufferWidth, float DisplayBufferHeight )
++{
++    // The terminal is sized to fill its area, so normally it is drawn 1:1.
++    // It only shrinks (keeping its aspect ratio) to make room for the
++    // on-screen keyboard or a shortcut bar that may not overlap it.
++    SDL_Rect area = ios_terminal_area;
++    if( !get_option<bool>( "ANDROID_SHORTCUT_OVERLAP" ) && quick_shortcuts_enabled ) {
++        area.h = std::min( area.h, ios_safe_area.y + ios_safe_area.h - ios_quick_shortcut_height() -
++                           area.y );
++    }
++    if( get_option<bool>( "ANDROID_KEYBOARD_SCREEN_SCALE" ) && ios_keyboard_overlap > 0 ) {
++        area.h = std::min( area.h, WindowHeight - ios_keyboard_overlap - area.y );
++    }
++    area.h = std::max( area.h, 1 );
++    const float scale = std::min( { 1.0f, area.w / DisplayBufferWidth, area.h / DisplayBufferHeight } );
++    SDL_Rect dstrect;
++    dstrect.w = static_cast<int>( DisplayBufferWidth * scale );
++    dstrect.h = static_cast<int>( DisplayBufferHeight * scale );
++    dstrect.x = area.x + ( area.w - dstrect.w ) / 2;
++    dstrect.y = area.y;
++    return dstrect;
++}
++
++// Convert a pointer position in window points (iPad trackpad or mouse) into
++// pixels on the terminal buffer, which is what the game expects.
++static point ios_window_to_terminal( const point &p )
++{
++    int width_points = 0;
++    int height_points = 0;
++    SDL_GetWindowSize( ::window.get(), &width_points, &height_points );
++    if( width_points <= 0 || height_points <= 0 ) {
++        return p;
++    }
++    const int buffer_width = TERMINAL_WIDTH * fontwidth;
++    const int buffer_height = TERMINAL_HEIGHT * fontheight;
++    const SDL_Rect dst = get_android_render_rect( buffer_width, buffer_height );
++    const float x = p.x * static_cast<float>( WindowWidth ) / width_points;
++    const float y = p.y * static_cast<float>( WindowHeight ) / height_points;
++    return point( static_cast<int>( ( x - dst.x ) * buffer_width / std::max( dst.w, 1 ) ),
++                  static_cast<int>( ( y - dst.y ) * buffer_height / std::max( dst.h, 1 ) ) );
++}
++
++// Re-layout after the window size or safe area changed. Returns true if
++// the terminal was resized.
++static bool ios_handle_resize()
++{
++    const int old_width = TERMINAL_WIDTH;
++    const int old_height = TERMINAL_HEIGHT;
++    ios_layout_dirty = false;
++    ios_update_window_metrics();
++    ios_fit_terminal_to_safe_area();
++    DebugLog( D_INFO, DC_ALL ) << "[iOS] relayout: window " << WindowWidth << "x" << WindowHeight
++                               << " px, terminal " << TERMINAL_WIDTH << "x" << TERMINAL_HEIGHT;
++    if( old_width == TERMINAL_WIDTH && old_height == TERMINAL_HEIGHT ) {
++        return false;
++    }
++    need_invalidate_framebuffers = true;
++    catacurses::stdscr = catacurses::newwin( TERMINAL_HEIGHT, TERMINAL_WIDTH, point::zero );
++    throwErrorIf( !SetupRenderTarget(), "SetupRenderTarget failed" );
++    game_ui::init_ui();
++    ui_manager::screen_resized();
++    return true;
++}
+ #endif
+ 
+ void refresh_display()
+@@ -549,7 +743,7 @@ void refresh_display()
+     // there, present it, select the buffer as target again.
+     SetRenderTarget( renderer, nullptr );
+     ClearScreen();
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     SDL_Rect dstrect = get_android_render_rect( TERMINAL_WIDTH * fontwidth,
+                        TERMINAL_HEIGHT * fontheight );
+     RenderCopy( renderer, display_buffer, NULL, &dstrect );
+@@ -559,10 +753,19 @@ void refresh_display()
+ 
+ #if defined(__ANDROID__)
+     draw_terminal_size_preview();
++#endif
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     if( g ) {
+         draw_quick_shortcuts();
+     }
+     draw_virtual_joystick();
++#endif
++#if defined(CATA_IOS)
++    // Automated tests capture exactly what is about to be shown.
++    std::string screenshot_path;
++    if( cata_ios::autoplay_frame( screenshot_path ) ) {
++        save_screenshot( screenshot_path );
++    }
+ #endif
+     SDL_RenderPresent( renderer.get() );
+     SetRenderTarget( renderer, display_buffer );
+@@ -763,7 +966,7 @@ void cata_tiles::draw_om( const point &dest, const tripoint_abs_omt &center_abs_
+         return;
+     }
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     // Attempted bugfix for Google Play crash - prevent divide-by-zero if no tile
+     // width/height specified
+     if( tile_width == 0 || tile_height == 0 ) {
+@@ -1881,7 +2084,7 @@ void toggle_fullscreen_window()
+     fullscreen = !fullscreen;
+ }
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ static float finger_down_x = -1.0f; // in pixels
+ static float finger_down_y = -1.0f; // in pixels
+ static float finger_curr_x = -1.0f; // in pixels
+@@ -1911,8 +2114,73 @@ static bool is_quick_shortcut_touch = false;
+ static bool quick_shortcuts_toggle_handled = false;
+ // the current finger repeat delay - will be somewhere between the min/max values depending on user input
+ uint32_t finger_repeat_delay = 500;
++#if defined(__ANDROID__)
+ // should we make sure the sdl surface is visible? set to true whenever the SDL window is shown.
+ static bool needs_sdl_surface_visibility_refresh = true;
++#endif
++
++#if defined(CATA_IOS)
++// SDL on iOS identifies touches by UITouch address, but the gesture code below
++// expects Android-style pointer indices: 0 for the first finger down, 1 for the
++// second and so on. Map active touches onto the lowest free index.
++static std::array<SDL_FingerID, 3> touch_finger_ids = {};
++static std::array<bool, 3> touch_finger_active = {};
++
++static int touch_finger_index( const SDL_TouchFingerEvent &tfinger )
++{
++    for( size_t i = 0; i < touch_finger_ids.size(); ++i ) {
++        if( touch_finger_active[i] && touch_finger_ids[i] == tfinger.fingerId ) {
++            return static_cast<int>( i );
++        }
++    }
++    if( tfinger.type == SDL_FINGERDOWN ) {
++        for( size_t i = 0; i < touch_finger_ids.size(); ++i ) {
++            if( !touch_finger_active[i] ) {
++                touch_finger_active[i] = true;
++                touch_finger_ids[i] = tfinger.fingerId;
++                return static_cast<int>( i );
++            }
++        }
++    }
++    return -1;
++}
++
++static void release_touch_finger_index( const SDL_TouchFingerEvent &tfinger )
++{
++    for( size_t i = 0; i < touch_finger_ids.size(); ++i ) {
++        if( touch_finger_active[i] && touch_finger_ids[i] == tfinger.fingerId ) {
++            touch_finger_active[i] = false;
++        }
++    }
++}
++
++static void reset_touch_finger_indices()
++{
++    touch_finger_active.fill( false );
++}
++#else
++static int touch_finger_index( const SDL_TouchFingerEvent &tfinger )
++{
++    return static_cast<int>( tfinger.fingerId );
++}
++#endif
++
++// Brief on-screen notice, e.g. when the quick shortcuts are toggled.
++static void show_touch_toast( const char *message )
++{
++#if defined(__ANDROID__)
++    JNIEnv *env = ( JNIEnv * )SDL_AndroidGetJNIEnv();
++    jobject activity = ( jobject )SDL_AndroidGetActivity();
++    jclass clazz( env->GetObjectClass( activity ) );
++    jstring toast_message = env->NewStringUTF( message );
++    jmethodID method_id = env->GetMethodID( clazz, "toast", "(Ljava/lang/String;)V" );
++    env->CallVoidMethod( activity, method_id, toast_message );
++    env->DeleteLocalRef( activity );
++    env->DeleteLocalRef( clazz );
++#else
++    cata_ios::show_toast( message );
++#endif
++}
+ 
+ // Quick shortcuts container: maps the touch input context category (std::string) to a std::list of input_events.
+ using quick_shortcuts_t = std::list<input_event>;
+@@ -1935,6 +2203,7 @@ std::string get_quick_shortcut_name( const std::string &category )
+ 
+ float android_get_display_density()
+ {
++#if defined(__ANDROID__)
+     JNIEnv *env = ( JNIEnv * )SDL_AndroidGetJNIEnv();
+     jobject activity = ( jobject )SDL_AndroidGetActivity();
+     jclass clazz( env->GetObjectClass( activity ) );
+@@ -1943,6 +2212,21 @@ float android_get_display_density()
+     env->DeleteLocalRef( activity );
+     env->DeleteLocalRef( clazz );
+     return ans;
++#else
++    // An iOS point is about the size of an Android density-independent pixel.
++    return cata_ios::display_scale();
++#endif
++}
++
++// Window area, in pixels, that the quick shortcut bar is laid out in.
++static SDL_Rect quick_shortcuts_area()
++{
++#if defined(CATA_IOS)
++    // Keep the bar clear of the notch, rounded corners and home indicator.
++    return ios_safe_area;
++#else
++    return SDL_Rect{ 0, 0, WindowWidth, WindowHeight };
++#endif
+ }
+ 
+ // given the active quick shortcuts, returns the dimensions of each quick shortcut button.
+@@ -1956,8 +2240,8 @@ void get_quick_shortcut_dimensions( quick_shortcuts_t &qsl, float &border, float
+     float min_width = std::floor( screen_density_scale * std::min(
+                                       get_option<int>( "ANDROID_SHORTCUT_WIDTH_MIN" ),
+                                       get_option<int>( "ANDROID_SHORTCUT_WIDTH_MAX" ) ) );
+-    float usable_window_width = WindowWidth * get_option<int>( "ANDROID_SHORTCUT_SCREEN_PERCENTAGE" ) *
+-                                0.01f;
++    float usable_window_width = quick_shortcuts_area().w *
++                                get_option<int>( "ANDROID_SHORTCUT_SCREEN_PERCENTAGE" ) * 0.01f;
+     if( width * qsl.size() > usable_window_width ) {
+         width *= usable_window_width / ( width * qsl.size() );
+         if( width < min_width ) {
+@@ -1982,22 +2266,23 @@ input_event *get_quick_shortcut_under_finger( bool down = false )
+     float border, width, height;
+     get_quick_shortcut_dimensions( qsl, border, width, height );
+ 
+-    float finger_y = down ? finger_down_y : finger_curr_y;
+-    if( finger_y < WindowHeight - height ) {
++    const SDL_Rect area = quick_shortcuts_area();
++    float finger_y = ( down ? finger_down_y : finger_curr_y ) - area.y;
++    if( finger_y < area.h - height ) {
+         return NULL;
+     }
+ 
+     int i = 0;
+     bool shortcut_right = get_option<std::string>( "ANDROID_SHORTCUT_POSITION" ) == "right";
+-    float finger_x = down ? finger_down_x : finger_curr_x;
++    float finger_x = ( down ? finger_down_x : finger_curr_x ) - area.x;
+     for( std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it ) {
+-        if( ( i + 1 ) * width > WindowWidth * get_option<int>( "ANDROID_SHORTCUT_SCREEN_PERCENTAGE" ) *
++        if( ( i + 1 ) * width > area.w * get_option<int>( "ANDROID_SHORTCUT_SCREEN_PERCENTAGE" ) *
+             0.01f ) {
+             continue;
+         }
+         i++;
+         if( shortcut_right ) {
+-            if( finger_x > WindowWidth - ( i * width ) ) {
++            if( finger_x > area.w - ( i * width ) ) {
+                 return &( *it );
+             }
+         } else {
+@@ -2291,11 +2576,14 @@ void draw_quick_shortcuts()
+     float border, width, height;
+     get_quick_shortcut_dimensions( qsl, border, width, height );
+     input_event *hovered_quick_shortcut = get_quick_shortcut_under_finger();
++    // Everything below is drawn relative to the shortcut area.
++    const SDL_Rect area = quick_shortcuts_area();
++    SDL_RenderSetViewport( renderer.get(), &area );
+     SDL_Rect rect;
+     bool hovered, show_hint;
+     int i = 0;
+     for( std::list<input_event>::iterator it = qsl.begin(); it != qsl.end(); ++it ) {
+-        if( ( i + 1 ) * width > WindowWidth * get_option<int>( "ANDROID_SHORTCUT_SCREEN_PERCENTAGE" ) *
++        if( ( i + 1 ) * width > area.w * get_option<int>( "ANDROID_SHORTCUT_SCREEN_PERCENTAGE" ) *
+             0.01f ) {
+             continue;
+         }
+@@ -2346,9 +2634,9 @@ void draw_quick_shortcuts()
+             }
+         }
+         if( shortcut_right )
+-            rect = { WindowWidth - static_cast<int>( ( i + 1 ) * width + border ), static_cast<int>( WindowHeight - height ), static_cast<int>( width - border * 2 ), static_cast<int>( height ) };
++            rect = { area.w - static_cast<int>( ( i + 1 ) * width + border ), static_cast<int>( area.h - height ), static_cast<int>( width - border * 2 ), static_cast<int>( height ) };
+         else
+-            rect = { static_cast<int>( i * width + border ), static_cast<int>( WindowHeight - height ), static_cast<int>( width - border * 2 ), static_cast<int>( height ) };
++            rect = { static_cast<int>( i * width + border ), static_cast<int>( area.h - height ), static_cast<int>( width - border * 2 ), static_cast<int>( height ) };
+         if( hovered ) {
+             SetRenderDrawColor( renderer, 0, 0, 0, 255 );
+         } else {
+@@ -2360,15 +2648,15 @@ void draw_quick_shortcuts()
+         if( hovered ) {
+             // draw a second button hovering above the first one
+             if( shortcut_right )
+-                rect = { WindowWidth - static_cast<int>( ( i + 1 ) * width + border ), static_cast<int>( WindowHeight - height * 2.2f ), static_cast<int>( width - border * 2 ), static_cast<int>( height ) };
++                rect = { area.w - static_cast<int>( ( i + 1 ) * width + border ), static_cast<int>( area.h - height * 2.2f ), static_cast<int>( width - border * 2 ), static_cast<int>( height ) };
+             else
+-                rect = { static_cast<int>( i * width + border ), static_cast<int>( WindowHeight - height * 2.2f ), static_cast<int>( width - border * 2 ), static_cast<int>( height ) };
++                rect = { static_cast<int>( i * width + border ), static_cast<int>( area.h - height * 2.2f ), static_cast<int>( width - border * 2 ), static_cast<int>( height ) };
+             SetRenderDrawColor( renderer, 0, 0, 196, 255 );
+             RenderFillRect( renderer, &rect );
+ 
+             if( show_hint ) {
+                 // draw a backdrop for the hint text
+-                rect = { 0, static_cast<int>( ( WindowHeight - height ) * 0.5f ), static_cast<int>( WindowWidth ), static_cast<int>( height ) };
++                rect = { 0, static_cast<int>( ( area.h - height ) * 0.5f ), static_cast<int>( area.w ), static_cast<int>( height ) };
+                 SetRenderDrawColor( renderer, 0, 0, 0,
+                                     get_option<int>( "ANDROID_SHORTCUT_OPACITY_BG" ) * 0.01f * 255.0f );
+                 RenderFillRect( renderer, &rect );
+@@ -2378,14 +2666,14 @@ void draw_quick_shortcuts()
+         SDL_RenderSetScale( renderer.get(), text_scale, text_scale );
+         int text_x, text_y;
+         if( shortcut_right ) {
+-            text_x = ( WindowWidth - ( i + 0.5f ) * width - ( font->width * utf8_width(
++            text_x = ( area.w - ( i + 0.5f ) * width - ( font->width * utf8_width(
+                            text ) ) * text_scale * 0.5f ) / text_scale;
+         } else {
+             text_x = ( ( i + 0.5f ) * width - ( font->width * utf8_width( text ) ) * text_scale * 0.5f ) /
+                      text_scale;
+         }
+         // TODO use draw_string instead
+-        text_y = ( WindowHeight - ( height + font->height * text_scale ) * 0.5f ) / text_scale;
++        text_y = ( area.h - ( height + font->height * text_scale ) * 0.5f ) / text_scale;
+         font->OutputChar( renderer, geometry, text, point( text_x + 1, text_y + 1 ), 0,
+                           get_option<int>( "ANDROID_SHORTCUT_OPACITY_SHADOW" ) * 0.01f );
+         font->OutputChar( renderer, geometry, text, point( text_x, text_y ),
+@@ -2403,13 +2691,13 @@ void draw_quick_shortcuts()
+                 hint_text = remove_color_tags( hint_text );
+                 const float safe_margin = 0.9f;
+                 int hint_length = utf8_width( hint_text );
+-                if( WindowWidth * safe_margin < font->width * text_scale * hint_length ) {
+-                    text_scale *= ( WindowWidth * safe_margin ) / ( font->width * text_scale *
++                if( area.w * safe_margin < font->width * text_scale * hint_length ) {
++                    text_scale *= ( area.w * safe_margin ) / ( font->width * text_scale *
+                                   hint_length );    // scale to fit comfortably
+                 }
+                 SDL_RenderSetScale( renderer.get(), text_scale, text_scale );
+-                text_x = ( WindowWidth - ( ( font->width  * hint_length ) * text_scale ) ) * 0.5f / text_scale;
+-                text_y = ( WindowHeight - font->height * text_scale ) * 0.5f / text_scale;
++                text_x = ( area.w - ( ( font->width  * hint_length ) * text_scale ) ) * 0.5f / text_scale;
++                text_y = ( area.h - font->height * text_scale ) * 0.5f / text_scale;
+                 font->OutputChar( renderer, geometry, hint_text, point( text_x + 1, text_y + 1 ), 0,
+                                   get_option<int>( "ANDROID_SHORTCUT_OPACITY_SHADOW" ) * 0.01f );
+                 font->OutputChar( renderer, geometry, hint_text, point( text_x, text_y ),
+@@ -2419,10 +2707,11 @@ void draw_quick_shortcuts()
+         }
+         SDL_RenderSetScale( renderer.get(), 1.0f, 1.0f );
+         i++;
+-        if( ( i + 1 ) * width > WindowWidth ) {
++        if( ( i + 1 ) * width > area.w ) {
+             break;
+         }
+     }
++    SDL_RenderSetViewport( renderer.get(), nullptr );
+ }
+ 
+ void draw_virtual_joystick()
+@@ -2597,6 +2886,7 @@ void handle_finger_input( uint32_t ticks )
+ 
+ bool android_is_hardware_keyboard_available()
+ {
++#if defined(__ANDROID__)
+     JNIEnv *env = ( JNIEnv * )SDL_AndroidGetJNIEnv();
+     jobject activity = ( jobject )SDL_AndroidGetActivity();
+     jclass clazz( env->GetObjectClass( activity ) );
+@@ -2605,12 +2895,16 @@ bool android_is_hardware_keyboard_available()
+     env->DeleteLocalRef( activity );
+     env->DeleteLocalRef( clazz );
+     return ans;
++#else
++    return cata_ios::hardware_keyboard_connected();
++#endif
+ }
+ 
+ void android_vibrate()
+ {
+     int vibration_ms = get_option<int>( "ANDROID_VIBRATION" );
+     if( vibration_ms > 0 && !android_is_hardware_keyboard_available() ) {
++#if defined(__ANDROID__)
+         JNIEnv *env = ( JNIEnv * )SDL_AndroidGetJNIEnv();
+         jobject activity = ( jobject )SDL_AndroidGetActivity();
+         jclass clazz( env->GetObjectClass( activity ) );
+@@ -2618,11 +2912,14 @@ void android_vibrate()
+         env->CallVoidMethod( activity, method_id, vibration_ms );
+         env->DeleteLocalRef( activity );
+         env->DeleteLocalRef( clazz );
++#else
++        cata_ios::haptic_feedback();
++#endif
+     }
+ }
+ #endif
+ 
+-#if !defined(__ANDROID__)
++#if !defined(__ANDROID__) && !defined(CATA_IOS)
+ static bool window_focus = false;
+ static bool text_input_active_when_regaining_focus = false;
+ #endif
+@@ -2633,7 +2930,7 @@ void StartTextInput()
+     if( SDL_IsTextInputActive() == SDL_TRUE ) {
+         return;
+     }
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     SDL_StartTextInput();
+ #else
+     if( window_focus ) {
+@@ -2646,7 +2943,7 @@ void StartTextInput()
+ 
+ void StopTextInput()
+ {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     SDL_StopTextInput();
+ #else
+     if( window_focus ) {
+@@ -2665,7 +2962,13 @@ static void CheckMessages()
+     bool text_refresh = false;
+     bool is_repeat = false;
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
++#if defined(CATA_IOS)
++    ios_poll_layout();
++    if( cata_ios::screenshot_pending() ) {
++        needupdate = true;
++    }
++#endif
+     if( visible_display_frame_dirty ) {
+         needupdate = true;
+         ui_manager::redraw_invalidated();
+@@ -2679,6 +2982,25 @@ static void CheckMessages()
+         StartTextInput();
+     }
+ 
++#if defined(CATA_IOS)
++    // The keyboard button overlay stands in for Android's Back button: a tap
++    // toggles the on-screen keyboard, a long press toggles the shortcuts.
++    if( cata_ios::consume_keyboard_toggle_request() ) {
++        if( SDL_IsTextInputActive() ) {
++            StopTextInput();
++        } else {
++            StartTextInput();
++        }
++    }
++    if( cata_ios::consume_shortcuts_toggle_request() ) {
++        quick_shortcuts_enabled = !quick_shortcuts_enabled;
++        show_touch_toast( quick_shortcuts_enabled ? "Shortcuts visible" : "Shortcuts hidden" );
++        needupdate = true;
++        ui_manager::redraw_invalidated();
++    }
++#endif
++
++#if defined(__ANDROID__)
+     // Make sure the SDL surface view is visible, otherwise the "Z" loading screen is visible.
+     if( needs_sdl_surface_visibility_refresh ) {
+         needs_sdl_surface_visibility_refresh = false;
+@@ -2692,6 +3014,7 @@ static void CheckMessages()
+         env->DeleteLocalRef( activity );
+         env->DeleteLocalRef( clazz );
+     }
++#endif
+ 
+     // Copy the current input context
+     if( !input_context::input_context_stack.empty() ) {
+@@ -2716,6 +3039,9 @@ static void CheckMessages()
+     bool is_default_mode = touch_input_context.get_category() == "DEFAULTMODE";
+     quick_shortcuts_t &qsl = quick_shortcuts_map[get_quick_shortcut_name(
+                                  touch_input_context.get_category() )];
++#if defined(CATA_IOS)
++    cata_ios::autoplay_input_context( touch_input_context.get_category() );
++#endif
+ 
+     // Don't do this logic if we already need an update, otherwise we're likely to overload the game with too much input on hold repeat events
+     if( !needupdate ) {
+@@ -2908,18 +3234,7 @@ static void CheckMessages()
+                 quick_shortcuts_toggle_handled = true;
+                 refresh_display();
+ 
+-                // Display an Android toast message
+-                {
+-                    JNIEnv *env = ( JNIEnv * )SDL_AndroidGetJNIEnv();
+-                    jobject activity = ( jobject )SDL_AndroidGetActivity();
+-                    jclass clazz( env->GetObjectClass( activity ) );
+-                    jstring toast_message = env->NewStringUTF( quick_shortcuts_enabled ? "Shortcuts visible" :
+-                                            "Shortcuts hidden" );
+-                    jmethodID method_id = env->GetMethodID( clazz, "toast", "(Ljava/lang/String;)V" );
+-                    env->CallVoidMethod( activity, method_id, toast_message );
+-                    env->DeleteLocalRef( activity );
+-                    env->DeleteLocalRef( clazz );
+-                }
++                show_touch_toast( quick_shortcuts_enabled ? "Shortcuts visible" : "Shortcuts hidden" );
+             }
+         }
+ 
+@@ -2934,6 +3249,9 @@ static void CheckMessages()
+                 // Prevent repeating inputs on the next call to this function if there is a fingerup event
+                 while( SDL_PollEvent( &ev ) ) {
+                     if( ev.type == SDL_FINGERUP ) {
++#if defined(CATA_IOS)
++                        reset_touch_finger_indices();
++#endif
+                         third_finger_down_x = third_finger_curr_x = second_finger_down_x = second_finger_curr_x =
+                                                   finger_down_x = finger_curr_x = -1.0f;
+                         third_finger_down_y = third_finger_curr_y = second_finger_down_y = second_finger_curr_y =
+@@ -2976,6 +3294,9 @@ static void CheckMessages()
+ 
+     std::optional<point> resize_dims;
+     bool render_target_reset = false;
++#if defined(CATA_IOS)
++    bool ios_window_resized = false;
++#endif
+     using cata::options::mouse;
+ 
+     while( SDL_PollEvent( &ev ) ) {
+@@ -2983,7 +3304,7 @@ static void CheckMessages()
+         switch( ev.type ) {
+             case SDL_WINDOWEVENT:
+                 switch( ev.window.event ) {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+                     // SDL will send a focus lost event whenever the app loses focus (eg. lock screen, switch app focus etc.)
+                     // If we detect it and the game seems in a saveable state, try and do a quicksave. This is a bit dodgy
+                     // as the player could be ANYWHERE doing ANYTHING (a sub-menu, interacting with an NPC/computer etc.)
+@@ -2997,9 +3318,17 @@ static void CheckMessages()
+                             !std::uncaught_exception() ) {
+                             g->quicksave();
+                         }
++#if defined(CATA_IOS)
++                        // The platform layer asked iOS for time to finish this
++                        // before the app gets suspended; release it now.
++                        cata_ios::end_background_task();
++#endif
+                         break;
+                     // SDL sends a window size changed event whenever the screen rotates orientation
+                     case SDL_WINDOWEVENT_SIZE_CHANGED:
++#if defined(CATA_IOS)
++                        ios_window_resized = true;
++#else
+                         WindowWidth = ev.window.data1;
+                         WindowHeight = ev.window.data2;
+                         SDL_Delay( 500 );
+@@ -3007,6 +3336,7 @@ static void CheckMessages()
+                         ui_manager::redraw_invalidated();
+                         refresh_display();
+                         needupdate = true;
++#endif
+                         break;
+ #else
+                     case SDL_WINDOWEVENT_FOCUS_LOST:
+@@ -3042,6 +3372,8 @@ static void CheckMessages()
+                     case SDL_WINDOWEVENT_RESTORED:
+ #if defined(__ANDROID__)
+                         needs_sdl_surface_visibility_refresh = true;
++#endif
++#if defined(__ANDROID__) || defined(CATA_IOS)
+                         if( android_is_hardware_keyboard_available() ) {
+                             StopTextInput();
+                             StartTextInput();
+@@ -3049,7 +3381,12 @@ static void CheckMessages()
+ #endif
+                         break;
+                     case SDL_WINDOWEVENT_RESIZED:
++#if defined(CATA_IOS)
++                        // Event sizes are in points; re-measure in pixels.
++                        ios_window_resized = true;
++#else
+                         resize_dims = point( ev.window.data1, ev.window.data2 );
++#endif
+                         break;
+                     default:
+                         break;
+@@ -3072,7 +3409,7 @@ static void CheckMessages()
+                     SDL_ShowCursor( SDL_DISABLE );
+                 }
+                 keyboard_mode mode = keyboard_mode::keychar;
+-#if !defined(__ANDROID__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1)
++#if !defined(__ANDROID__) && !defined(CATA_IOS)
+                 if( !SDL_IsTextInputActive() ) {
+                     mode = keyboard_mode::keycode;
+                 }
+@@ -3086,7 +3423,7 @@ static void CheckMessages()
+                         // key was handled
+                     } else {
+                         last_input = input_event( lc, input_event_t::keyboard_char );
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+                         if( !android_is_hardware_keyboard_available() ) {
+                             if( !is_string_input( touch_input_context ) && !touch_input_context.allow_text_entry ) {
+                                 if( get_option<bool>( "ANDROID_AUTO_KEYBOARD" ) ) {
+@@ -3130,7 +3467,7 @@ static void CheckMessages()
+                 }
+ #endif
+                 keyboard_mode mode = keyboard_mode::keychar;
+-#if !defined(__ANDROID__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1)
++#if !defined(__ANDROID__) && !defined(CATA_IOS)
+                 if( !SDL_IsTextInputActive() ) {
+                     mode = keyboard_mode::keycode;
+                 }
+@@ -3154,7 +3491,7 @@ static void CheckMessages()
+                     if( strlen( ev.text.text ) > 0 ) {
+                         const unsigned lc = UTF8_getch( ev.text.text );
+                         last_input = input_event( lc, input_event_t::keyboard_char );
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+                         if( !android_is_hardware_keyboard_available() ) {
+                             if( !is_string_input( touch_input_context ) && !touch_input_context.allow_text_entry ) {
+                                 if( get_option<bool>( "ANDROID_AUTO_KEYBOARD" ) ) {
+@@ -3297,9 +3634,9 @@ static void CheckMessages()
+                 }
+                 break;
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+             case SDL_FINGERMOTION:
+-                if( ev.tfinger.fingerId == 0 ) {
++                if( touch_finger_index( ev.tfinger ) == 0 ) {
+                     if( !is_quick_shortcut_touch ) {
+                         update_finger_repeat_delay();
+                     }
+@@ -3323,16 +3660,16 @@ static void CheckMessages()
+                         }
+                     }
+ 
+-                } else if( ev.tfinger.fingerId == 1 ) {
++                } else if( touch_finger_index( ev.tfinger ) == 1 ) {
+                     second_finger_curr_x = ev.tfinger.x * WindowWidth;
+                     second_finger_curr_y = ev.tfinger.y * WindowHeight;
+-                } else if( ev.tfinger.fingerId == 2 ) {
++                } else if( touch_finger_index( ev.tfinger ) == 2 ) {
+                     third_finger_curr_x = ev.tfinger.x * WindowWidth;
+                     third_finger_curr_y = ev.tfinger.y * WindowHeight;
+                 }
+                 break;
+             case SDL_FINGERDOWN:
+-                if( ev.tfinger.fingerId == 0 ) {
++                if( touch_finger_index( ev.tfinger ) == 0 ) {
+                     finger_down_x = finger_curr_x = ev.tfinger.x * WindowWidth;
+                     finger_down_y = finger_curr_y = ev.tfinger.y * WindowHeight;
+                     finger_down_time = ticks;
+@@ -3343,13 +3680,13 @@ static void CheckMessages()
+                     }
+                     ui_manager::redraw_invalidated();
+                     needupdate = true; // ensure virtual joystick and quick shortcuts redraw as we interact
+-                } else if( ev.tfinger.fingerId == 1 ) {
++                } else if( touch_finger_index( ev.tfinger ) == 1 ) {
+                     if( !is_quick_shortcut_touch ) {
+                         second_finger_down_x = second_finger_curr_x = ev.tfinger.x * WindowWidth;
+                         second_finger_down_y = second_finger_curr_y = ev.tfinger.y * WindowHeight;
+                         is_two_finger_touch = true;
+                     }
+-                } else if( ev.tfinger.fingerId == 2 ) {
++                } else if( touch_finger_index( ev.tfinger ) == 2 ) {
+                     if( !is_quick_shortcut_touch ) {
+                         third_finger_down_x = third_finger_curr_x = ev.tfinger.x * WindowWidth;
+                         third_finger_down_y = third_finger_curr_y = ev.tfinger.y * WindowHeight;
+@@ -3359,7 +3696,7 @@ static void CheckMessages()
+                 }
+                 break;
+             case SDL_FINGERUP:
+-                if( ev.tfinger.fingerId == 0 ) {
++                if( touch_finger_index( ev.tfinger ) == 0 ) {
+                     finger_curr_x = ev.tfinger.x * WindowWidth;
+                     finger_curr_y = ev.tfinger.y * WindowHeight;
+                     if( is_quick_shortcut_touch ) {
+@@ -3472,18 +3809,7 @@ static void CheckMessages()
+ 
+                                     quick_shortcuts_toggle_handled = true;
+ 
+-                                    // Display an Android toast message
+-                                    {
+-                                        JNIEnv *env = ( JNIEnv * )SDL_AndroidGetJNIEnv();
+-                                        jobject activity = ( jobject )SDL_AndroidGetActivity();
+-                                        jclass clazz( env->GetObjectClass( activity ) );
+-                                        jstring toast_message = env->NewStringUTF( quick_shortcuts_enabled ? "Shortcuts visible" :
+-                                                                "Shortcuts hidden" );
+-                                        jmethodID method_id = env->GetMethodID( clazz, "toast", "(Ljava/lang/String;)V" );
+-                                        env->CallVoidMethod( activity, method_id, toast_message );
+-                                        env->DeleteLocalRef( activity );
+-                                        env->DeleteLocalRef( clazz );
+-                                    }
++                                    show_touch_toast( quick_shortcuts_enabled ? "Shortcuts visible" : "Shortcuts hidden" );
+                                 } else {
+                                     last_input = input_event( three_tap_key, input_event_t::keyboard_char );
+                                 }
+@@ -3528,14 +3854,14 @@ static void CheckMessages()
+                     needupdate = true; // ensure virtual joystick and quick shortcuts are updated properly
+                     ui_manager::redraw_invalidated();
+                     refresh_display(); // as above, but actually redraw it now as well
+-                } else if( ev.tfinger.fingerId == 1 ) {
++                } else if( touch_finger_index( ev.tfinger ) == 1 ) {
+                     if( is_two_finger_touch ) {
+                         // on second finger release, just remember the x/y position so we can calculate delta once first finger is done
+                         // is_two_finger_touch will be reset when first finger lifts (see above)
+                         second_finger_curr_x = ev.tfinger.x * WindowWidth;
+                         second_finger_curr_y = ev.tfinger.y * WindowHeight;
+                     }
+-                } else if( ev.tfinger.fingerId == 2 ) {
++                } else if( touch_finger_index( ev.tfinger ) == 2 ) {
+                     if( is_three_finger_touch ) {
+                         // on third finger release, just remember the x/y position so we can calculate delta once first finger is done
+                         // is_three_finger_touch will be reset when first finger lifts (see above)
+@@ -3543,6 +3869,9 @@ static void CheckMessages()
+                         third_finger_curr_y = ev.tfinger.y * WindowHeight;
+                     }
+                 }
++#if defined(CATA_IOS)
++                release_touch_finger_index( ev.tfinger );
++#endif
+ 
+                 break;
+ #endif
+@@ -3560,6 +3889,13 @@ static void CheckMessages()
+         restore_on_out_of_scope prev_last_input( last_input );
+         needupdate = resized = handle_resize( resize_dims.value().x, resize_dims.value().y );
+     }
++#if defined(CATA_IOS)
++    if( ios_window_resized || ios_layout_dirty ) {
++        restore_on_out_of_scope prev_last_input( last_input );
++        resized = ios_handle_resize();
++        needupdate = true;
++    }
++#endif
+     // resizing already reinitializes the render target
+     if( !resized && render_target_reset ) {
+         throwErrorIf( !SetupRenderTarget(), "SetupRenderTarget failed" );
+@@ -3640,7 +3976,7 @@ static void init_term_size_and_scaling_factor()
+     scaling_factor = 1;
+     point terminal( get_option<int>( "TERMINAL_X" ), get_option<int>( "TERMINAL_Y" ) );
+ 
+-#if !defined(__ANDROID__)
++#if !defined(__ANDROID__) && !defined(CATA_IOS)
+ 
+     if( get_option<std::string>( "SCALING_FACTOR" ) == "2" ) {
+         scaling_factor = 2;
+@@ -3930,7 +4266,7 @@ input_event input_manager::get_input_event( const keyboard_mode preferred_keyboa
+         throw std::runtime_error( "input_manager::get_input_event called in test mode" );
+     }
+ 
+-#if !defined(__ANDROID__) && !(defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE == 1)
++#if !defined(__ANDROID__) && !defined(CATA_IOS)
+     if( actual_keyboard_mode( preferred_keyboard_mode ) == keyboard_mode::keychar ) {
+         StartTextInput();
+     } else {
+@@ -3986,13 +4322,16 @@ input_event input_manager::get_input_event( const keyboard_mode preferred_keyboa
+     }
+ 
+     SDL_GetMouseState( &last_input.mouse_pos.x, &last_input.mouse_pos.y );
++#if defined(CATA_IOS)
++    last_input.mouse_pos = ios_window_to_terminal( last_input.mouse_pos );
++#endif
+     if( last_input.type == input_event_t::keyboard_char ) {
+         previously_pressed_key = last_input.get_first_input();
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+         android_vibrate();
+ #endif
+     }
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     else if( last_input.type == input_event_t::gamepad ) {
+         android_vibrate();
+     }
+diff --git a/src/string_editor_window.cpp b/src/string_editor_window.cpp
+index 018896e..98da456 100644
+--- a/src/string_editor_window.cpp
++++ b/src/string_editor_window.cpp
+@@ -10,7 +10,7 @@
+ #include "sdl_wrappers.h"
+ #endif
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ #include <SDL_keyboard.h>
+ 
+ #include "cata_utility.h"
+@@ -413,7 +413,7 @@ std::pair<bool, std::string> string_editor_window::query_string()
+         wnoutrefresh( _win );
+     } );
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     on_out_of_scope stop_text_input( []() {
+         if( get_option<bool>( "ANDROID_AUTO_KEYBOARD" ) ) {
+             StopTextInput();
+diff --git a/src/string_input_popup.cpp b/src/string_input_popup.cpp
+index 1091068..ac0d425 100644
+--- a/src/string_input_popup.cpp
++++ b/src/string_input_popup.cpp
+@@ -25,7 +25,7 @@
+ #include "sdl_wrappers.h"
+ #endif
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+ #include <SDL_keyboard.h>
+ 
+ #include "options.h"
+@@ -487,7 +487,7 @@ const std::string &string_input_popup::query_string( const bool loop, const bool
+         if( desc_view_ptr && desc_view_ptr->handle_navigation( action, *ctxt ) ) {
+             // NO FURTHER ACTION REQUIRED
+         } else if( action == "TEXT.QUIT" ) {
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+             if( get_option<bool>( "ANDROID_AUTO_KEYBOARD" ) ) {
+                 StopTextInput();
+             }
+diff --git a/src/uilist.cpp b/src/uilist.cpp
+index 18c2b9c..7554415 100644
+--- a/src/uilist.cpp
++++ b/src/uilist.cpp
+@@ -950,7 +950,7 @@ shared_ptr_fast<uilist_impl> uilist::query( bool loop, int timeout,
+ 
+     shared_ptr_fast<uilist_impl> ui = create_or_get_ui();
+ 
+-#if defined(__ANDROID__)
++#if defined(__ANDROID__) || defined(CATA_IOS)
+     for( const auto &entry : entries ) {
+         if( entry.enabled && entry.hotkey.has_value()
+             && entry.hotkey.value() != input_event() ) {
+diff --git a/src/worldfactory.cpp b/src/worldfactory.cpp
+index 9a65d65..7bd76bb 100644
+--- a/src/worldfactory.cpp
++++ b/src/worldfactory.cpp
+@@ -1952,13 +1952,13 @@ bool worldfactory::valid_worldname( const std::string &name, bool automated ) co
+ 
+ bool WORLD::create_timestamp()
+ {
+-#if defined( TIME_UTC ) && !defined( MACOSX ) && !defined(__ANDROID__)
++#if defined( TIME_UTC ) && !defined( MACOSX ) && !defined(__ANDROID__) && !defined(CATA_IOS)
+     std::timespec t;
+     if( std::timespec_get( &t, TIME_UTC ) != TIME_UTC ) {
+         return false;
+     }
+ #else
+-    // MinGW-w64 with pthread, MacOS, Android, etc
++    // MinGW-w64 with pthread, MacOS, Android, iOS, etc
+     timespec t;
+     if( clock_gettime( CLOCK_REALTIME, &t ) != 0 ) {
+         return false;

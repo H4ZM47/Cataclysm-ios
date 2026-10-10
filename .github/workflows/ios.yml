@@ -1,0 +1,128 @@
+name: iOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A full build takes a while; let a running build finish (and report) and
+# queue the newest push behind it rather than cancelling it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: macos-15
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Simulator build and smoke test
+            platform: iphonesimulator
+          - name: Device build (unsigned IPA)
+            platform: iphoneos
+    env:
+      USE_CCACHE: "1"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 3G
+      CCACHE_COMPRESS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          cmake --version | head -1
+          sysctl -n hw.ncpu hw.memsize
+
+      - name: Install build tools
+        run: brew install ccache ninja gettext
+
+      - name: Fetch Cataclysm source
+        run: scripts/fetch-cdda.sh
+
+      - name: Restore SDL2 libraries
+        id: deps
+        uses: actions/cache/restore@v4
+        with:
+          path: deps/install/${{ matrix.platform }}
+          key: deps-${{ matrix.platform }}-${{ runner.os }}-${{ hashFiles('scripts/build-deps.sh') }}
+
+      - name: Build SDL2 libraries
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: scripts/build-deps.sh ${{ matrix.platform }}
+
+      - name: Save SDL2 libraries
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: deps/install/${{ matrix.platform }}
+          key: ${{ steps.deps.outputs.cache-primary-key }}
+
+      - name: Compile translations
+        if: matrix.platform == 'iphoneos'
+        run: scripts/compile-translations.sh
+
+      - name: Restore compiler cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ccache-${{ matrix.platform }}-
+
+      - name: Build Cataclysm.app
+        id: build
+        run: scripts/build-app.sh ${{ matrix.platform }} Release
+
+      - name: Save compiler cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.platform }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Compiler cache statistics
+        if: always()
+        run: ccache -s || true
+
+      - name: Smoke test in the iOS Simulator
+        if: matrix.platform == 'iphonesimulator'
+        env:
+          SMOKE_PRINT_SCREENSHOTS: "1"
+        run: scripts/simulator-smoke-test.sh build/iphonesimulator/Release-iphonesimulator/Cataclysm.app dist/smoke-test
+
+      - name: Smoke test in the iPad Simulator
+        if: ${{ !cancelled() && matrix.platform == 'iphonesimulator' && steps.build.outcome == 'success' }}
+        env:
+          SMOKE_DEVICE_KIND: ipad
+          SMOKE_PRINT_SCREENSHOTS: "1"
+        run: scripts/simulator-smoke-test.sh build/iphonesimulator/Release-iphonesimulator/Cataclysm.app dist/smoke-test-ipad
+
+      - name: Upload smoke test results
+        if: always() && matrix.platform == 'iphonesimulator'
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test
+          path: |
+            dist/smoke-test
+            dist/smoke-test-ipad
+          if-no-files-found: ignore
+
+      - name: Package unsigned IPA
+        if: matrix.platform == 'iphoneos'
+        run: scripts/package-ipa.sh build/iphoneos/Release-iphoneos/Cataclysm.app
+
+      - name: Upload IPA
+        if: matrix.platform == 'iphoneos'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cataclysm-unsigned-ipa
+          path: dist/*.ipa
+          compression-level: 0

@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: cataclysm-ios <cataclysm-ios@localhost>
+Date: Fri, 9 Oct 2026 23:05:44 +0000
+Subject: [PATCH] Keep the touch UI's input context stack alive until exit
+
+Input contexts register themselves on a static list for the touch
+controls. Contexts owned by globals (the game and the touch controls'
+copy of the current context) are destroyed during static destruction,
+after that list, so exiting through exit() - e.g. on SDL_QUIT - crashed
+in ~input_context(). The global touch context was also pushed onto the
+list before the list was constructed.
+
+Allocate the list on first use and never destroy it.
+---
+ src/input_context.cpp | 9 ++++++++-
+ src/input_context.h   | 8 ++++----
+ src/sdltiles.cpp      | 4 ++--
+ 3 files changed, 14 insertions(+), 7 deletions(-)
+
+diff --git a/src/input_context.cpp b/src/input_context.cpp
+index 282bc5a..cf5bb81 100644
+--- a/src/input_context.cpp
++++ b/src/input_context.cpp
+@@ -154,7 +154,14 @@ const std::string &input_context::input_to_action( const input_event &inp ) cons
+ }
+ 
+ #if defined(__ANDROID__) || defined(CATA_IOS)
+-std::list<input_context *> input_context::input_context_stack;
++std::list<input_context *> &input_context::input_context_stack()
++{
++    // Never destroyed: input contexts owned by globals (the game, the touch
++    // controls' copy of the current context) are destroyed during static
++    // destruction, after a static list would already be gone.
++    static std::list<input_context *> *stack = new std::list<input_context *>();
++    return *stack;
++}
+ 
+ void input_context::register_manual_key( manual_key mk )
+ {
+diff --git a/src/input_context.h b/src/input_context.h
+index 9d83ef7..aa2c8d7 100644
+--- a/src/input_context.h
++++ b/src/input_context.h
+@@ -43,13 +43,13 @@ class input_context
+     public:
+ #if defined(__ANDROID__) || defined(CATA_IOS)
+         // Whatever's on top is our current input context.
+-        static std::list<input_context *> input_context_stack;
++        static std::list<input_context *> &input_context_stack();
+ #endif
+ 
+         input_context() : registered_any_input( false ), category( "default" ),
+             coordinate_input_received( false ), handling_coordinate_input( false ) {
+ #if defined(__ANDROID__) || defined(CATA_IOS)
+-            input_context_stack.push_back( this );
++            input_context_stack().push_back( this );
+             allow_text_entry = false;
+ #endif
+             register_action( "toggle_language_to_en" );
+@@ -62,7 +62,7 @@ class input_context
+               coordinate_input_received( false ), handling_coordinate_input( false ),
+               preferred_keyboard_mode( preferred_keyboard_mode ) {
+ #if defined(__ANDROID__) || defined(CATA_IOS)
+-            input_context_stack.push_back( this );
++            input_context_stack().push_back( this );
+             allow_text_entry = false;
+ #endif
+             register_action( "toggle_language_to_en" );
+@@ -70,7 +70,7 @@ class input_context
+ 
+ #if defined(__ANDROID__) || defined(CATA_IOS)
+         virtual ~input_context() {
+-            input_context_stack.remove( this );
++            input_context_stack().remove( this );
+         }
+ 
+         // HACK: hack to allow creating manual keybindings for getch() instances, uilists etc. that don't use an input_context outside of the Android version
+diff --git a/src/sdltiles.cpp b/src/sdltiles.cpp
+index 6bcc8e8..679557e 100644
+--- a/src/sdltiles.cpp
++++ b/src/sdltiles.cpp
+@@ -3017,8 +3017,8 @@ static void CheckMessages()
+ #endif
+ 
+     // Copy the current input context
+-    if( !input_context::input_context_stack.empty() ) {
+-        input_context *new_input_context = *--input_context::input_context_stack.end();
++    if( !input_context::input_context_stack().empty() ) {
++        input_context *new_input_context = input_context::input_context_stack().back();
+         if( new_input_context && *new_input_context != touch_input_context ) {
+ 
+             // If we were in an allow_text_entry input context, and text input is still active, and we're auto-managing keyboard, hide it.
