@@ -84,26 +84,41 @@ echo "==> Installing $APP"
 xcrun simctl install "$UDID" "$APP"
 
 echo "==> Launching $BUNDLE_ID"
-SIMCTL_CHILD_CATA_AUTOPLAY="$SCRIPT" \
-SIMCTL_CHILD_CATA_IOS_HARDWARE_KEYBOARD="${SMOKE_HARDWARE_KEYBOARD:-0}" \
+launch_output="$(SIMCTL_CHILD_CATA_AUTOPLAY="$SCRIPT" \
+    SIMCTL_CHILD_CATA_IOS_HARDWARE_KEYBOARD="${SMOKE_HARDWARE_KEYBOARD:-0}" \
     xcrun simctl launch \
     --stdout="$OUT/stdout.log" --stderr="$OUT/stderr.log" \
-    "$UDID" "$BUNDLE_ID"
+    "$UDID" "$BUNDLE_ID")"
+echo "$launch_output"
+# "<bundle id>: <pid>". Simulator apps are ordinary processes on the host.
+APP_PID="${launch_output##*: }"
+if [[ ! "$APP_PID" =~ ^[0-9]+$ ]]; then
+    echo "error: could not read the app's process ID from simctl" >&2
+    exit 1
+fi
 
 DATA_DIR="$(xcrun simctl get_app_container "$UDID" "$BUNDLE_ID" data)"
 DOCS="$DATA_DIR/Documents"
 echo "==> App documents: $DOCS"
 
 app_running() {
-    xcrun simctl spawn "$UDID" launchctl list 2>/dev/null | grep -q "UIKitApplication:$BUNDLE_ID"
+    kill -0 "$APP_PID" 2>/dev/null
+}
+
+autoplay_finished() {
+    grep -q "autoplay-finished\|\[autoplay\] done" "$OUT/stderr.log" 2>/dev/null
 }
 
 status=0
 start=$SECONDS
 while true; do
-    if grep -q "autoplay-finished\|\[autoplay\] done" "$OUT/stderr.log" 2>/dev/null; then
+    if autoplay_finished; then
         echo "==> Autoplay finished after $((SECONDS - start))s"
         sleep 3
+        if ! app_running; then
+            echo "error: the app quit after the script finished" >&2
+            status=1
+        fi
         break
     fi
     if ! app_running; then
@@ -131,6 +146,12 @@ echo "==> Documents"
 # Crash reports for the app, if any.
 find ~/Library/Logs/DiagnosticReports -name 'Cataclysm*' -newer "$OUT/stdout.log" \
     -exec cp {} "$OUT/" \; 2>/dev/null || true
+for report in "$OUT"/Cataclysm*.ips; do
+    [[ -f "$report" ]] || continue
+    echo "==> Crash report $(basename "$report")"
+    head -c 20000 "$report"
+    echo
+done
 
 echo "==> stdout (tail)"
 tail -n 40 "$OUT/stdout.log" 2>/dev/null || true
@@ -158,7 +179,7 @@ for required in 01-main-menu 03-game-start; do
     fi
 done
 # The quicksave at the end of the default script writes the character.
-if [[ -z "${SMOKE_SCRIPT:-}" ]] && ! find "$DOCS/save" -name '*.sav*' 2>/dev/null | grep -q .; then
+if [[ -z "${SMOKE_SCRIPT:-}" && -z "$(find "$DOCS/save" -name '*.sav*' -print -quit 2>/dev/null)" ]]; then
     echo "error: no saved character in $DOCS/save" >&2
     status=1
 fi
