@@ -110,11 +110,15 @@ add_library(cdda-third-party STATIC ${FLATBUFFERS_SOURCES} ${ZSTD_SOURCES} ${IMG
 target_compile_definitions(cdda-third-party PRIVATE ${CDDA_DEFINITIONS})
 target_include_directories(cdda-third-party PRIVATE ${CDDA_INCLUDE_DIRS})
 target_compile_options(cdda-third-party PRIVATE -w -fsigned-char)
+# Keep the library out of archives, or Xcode makes a "Generic Xcode Archive"
+# that cannot be distributed.
+set_target_properties(cdda-third-party PROPERTIES XCODE_ATTRIBUTE_SKIP_INSTALL "YES")
 
 add_executable(Cataclysm MACOSX_BUNDLE
     ${CDDA_SOURCES}
     ${IOS_PLATFORM_SOURCES}
-    "${CMAKE_CURRENT_SOURCE_DIR}/resources/Assets.xcassets")
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/Assets.xcassets"
+    "${CMAKE_CURRENT_SOURCE_DIR}/resources/PrivacyInfo.xcprivacy")
 target_compile_definitions(Cataclysm PRIVATE ${CDDA_DEFINITIONS})
 target_include_directories(Cataclysm PRIVATE ${CDDA_INCLUDE_DIRS})
 # Xcode enables -Wshorten-64-to-32, which floods the log for upstream code.
@@ -167,7 +171,10 @@ target_link_libraries(Cataclysm PRIVATE
 set_target_properties(Cataclysm PROPERTIES
     OUTPUT_NAME "Cataclysm"
     MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_BINARY_DIR}/Info.plist"
-    RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/resources/Assets.xcassets"
+    RESOURCE "${CMAKE_CURRENT_SOURCE_DIR}/resources/Assets.xcassets;${CMAKE_CURRENT_SOURCE_DIR}/resources/PrivacyInfo.xcprivacy"
+    # Install the app where "xcodebuild archive" expects an iOS app.
+    XCODE_ATTRIBUTE_SKIP_INSTALL "NO"
+    XCODE_ATTRIBUTE_INSTALL_PATH "$(LOCAL_APPS_DIR)"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${APP_BUNDLE_ID}"
     XCODE_ATTRIBUTE_MARKETING_VERSION "${APP_MARKETING_VERSION}"
     XCODE_ATTRIBUTE_CURRENT_PROJECT_VERSION "${APP_BUILD_NUMBER}"
