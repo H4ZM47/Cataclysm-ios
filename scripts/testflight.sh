@@ -46,6 +46,13 @@ if [[ "$(uname -s)" != Darwin ]] || ! command -v xcodebuild >/dev/null 2>&1; the
     echo "error: this needs a Mac with Xcode" >&2
     exit 1
 fi
+# App Store Connect accepts uploads built with Xcode 26 or later
+# (https://developer.apple.com/news/upcoming-requirements/).
+xcode_version="$(xcodebuild -version | awk 'NR == 1 { print $2 }')"
+if (( ${xcode_version%%.*} < 26 )); then
+    echo "error: App Store Connect needs a build from Xcode 26 or later, not $xcode_version" >&2
+    exit 1
+fi
 if [[ ! "$TEAM" =~ ^[A-Z0-9]{10}$ ]]; then
     echo "error: set APP_DEVELOPMENT_TEAM to your 10-character team ID" >&2
     echo "       (developer.apple.com > Account > Membership details)" >&2
@@ -129,13 +136,6 @@ codesign --verify --strict "$APP"
 VERSION="$(plist CFBundleShortVersionString "$APP/Info.plist")"
 echo "==> Archived $BUNDLE_ID $VERSION ($(plist CFBundleVersion "$APP/Info.plist"))"
 
-# "app-store-connect" replaced "app-store" in Xcode 15.3.
-xcode_version="$(xcodebuild -version | awk 'NR == 1 { print $2 }')"
-IFS=. read -r xcode_major xcode_minor _ <<<"$xcode_version.0"
-method=app-store-connect
-if (( xcode_major < 15 || (xcode_major == 15 && xcode_minor < 3) )); then
-    method=app-store
-fi
 destination=upload
 if [[ "${TESTFLIGHT_EXPORT_ONLY:-0}" == 1 ]]; then
     destination="export"
@@ -151,7 +151,7 @@ cat > "$BUILD_DIR/ExportOptions.plist" <<PLIST
 <plist version="1.0">
 <dict>
 	<key>method</key>
-	<string>$method</string>
+	<string>app-store-connect</string>
 	<key>destination</key>
 	<string>$destination</string>
 	<key>teamID</key>

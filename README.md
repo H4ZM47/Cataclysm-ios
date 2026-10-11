@@ -173,7 +173,8 @@ The commit must be clean and pushed, and `./cdda` must match `patches/`.
 ### TestFlight
 
 `scripts/testflight.sh` archives the app, signs it for your Apple developer team and uploads it
-to App Store Connect for TestFlight, from your Mac. One-time setup:
+to App Store Connect for TestFlight, from your Mac. It needs Xcode 26 or later, which
+[App Store Connect requires for uploads](https://developer.apple.com/news/upcoming-requirements/). One-time setup:
 
 1. Register the bundle ID (`io.github.h4zm47.cataclysmdda`, or your own passed as
    `APP_BUNDLE_ID`) under *Certificates, Identifiers & Profiles → Identifiers*, then create the
