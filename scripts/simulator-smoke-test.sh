@@ -173,6 +173,11 @@ echo "==> stderr (tail)"
 tail -n 40 "$OUT/stderr.log" 2>/dev/null || true
 echo "==> debug.log"
 cat "$OUT/config/debug.log" 2>/dev/null | head -n 150 || echo "(no debug.log)"
+# Error popups are dismissed by autoplay; report them without failing, as
+# upstream game code raises some at random (e.g. during NPC turns).
+if grep -q " ERROR : " "$OUT/config/debug.log" 2>/dev/null; then
+    echo "::warning::the game reported errors during the smoke test (see debug.log above)"
+fi
 
 shopt -s nullglob
 shots=("$OUT"/screenshots/*.png)

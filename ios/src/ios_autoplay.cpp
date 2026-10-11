@@ -18,6 +18,9 @@
 //                         keyboard)
 //   shot=<name>           save the window to Documents/autoplay/<name>.png
 //   log=<text>            write a marker line to stderr
+// Error popups (debugmsg, input context DEBUG_MSG) are dismissed with the
+// space bar whenever they appear, so a random error in game code doesn't
+// swallow the rest of the script; the error itself is still in debug.log.
 // Example: "idle=8;shot=menu;text=n;text=d;wait=DEFAULTMODE;shot=game"
 
 #include "ios_platform.h"
@@ -67,6 +70,7 @@ std::mutex context_mutex;
 std::string current_context;
 Uint32 context_since = 0;
 constexpr Uint32 context_settle_ms = 1500;
+constexpr Uint32 debug_message_settle_ms = 500;
 
 // Touches synthesized here use IDs far from real UITouch addresses.
 SDL_FingerID next_finger_id = 0x7ac0;
@@ -250,11 +254,33 @@ bool context_reached( const autoplay_step &step )
     return false;
 }
 
+// Whether an error popup is waiting for input; if so, press the space bar
+// to continue the game.
+bool dismissed_debug_message()
+{
+    {
+        std::lock_guard<std::mutex> lock( context_mutex );
+        if( current_context != "DEBUG_MSG" ||
+            SDL_GetTicks() - context_since < debug_message_settle_ms ) {
+            return false;
+        }
+        // Count from now, so the same popup gets a moment to close.
+        context_since = SDL_GetTicks();
+    }
+    std::fprintf( stderr, "[autoplay] dismissed an error message (see debug.log)\n" );
+    // A key press of the space bar is ignored on iOS; text input carries it.
+    push_text( " " );
+    return true;
+}
+
 // Runs on SDL's timer thread; SDL_PushEvent is thread-safe.
 Uint32 timer_callback( Uint32, void * )
 {
     if( next_step >= steps.size() ) {
         return 0;
+    }
+    if( dismissed_debug_message() ) {
+        return idle_poll_ms;
     }
     const autoplay_step &step = steps[next_step];
     if( step.action == "idle" ) {
