@@ -138,7 +138,7 @@ if (( xcode_major < 15 || (xcode_major == 15 && xcode_minor < 3) )); then
 fi
 destination=upload
 if [[ "${TESTFLIGHT_EXPORT_ONLY:-0}" == 1 ]]; then
-    destination=export
+    destination="export"
 fi
 internal_only=""
 if [[ "${TESTFLIGHT_INTERNAL_ONLY:-0}" == 1 ]]; then
