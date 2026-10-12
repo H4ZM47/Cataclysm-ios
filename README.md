@@ -128,7 +128,7 @@ files.
 | `ios/src/ios_platform.mm` | iOS platform layer: paths, safe area, keyboard, haptics, keyboard button |
 | `ios/src/ios_autoplay.cpp` | Scripted input for automated tests |
 | `ios/scripts/copy-game-data.sh` | Build phase that copies `data/`, `gfx/` and translations into the app |
-| `ios/resources/` | `Info.plist`, app icon |
+| `ios/resources/` | `Info.plist`, privacy manifest, app icon |
 | `scripts/` | Fetch, build, package, release and test scripts |
 | `tools/linux-harness/` | Desktop build of the iOS code paths for development without a Mac |
 | `.github/workflows/ios.yml` | CI: device build and IPA, simulator build and smoke test |
@@ -169,6 +169,36 @@ RELEASE_DRAFT=1 scripts/release.sh v0.I-1-ios.1   # create a draft to review fir
 ```
 
 The commit must be clean and pushed, and `./cdda` must match `patches/`.
+
+### TestFlight
+
+`scripts/testflight.sh` archives the app, signs it for your Apple developer team and uploads it
+to App Store Connect for TestFlight, from your Mac. It needs Xcode 26 or later, which
+[App Store Connect requires for uploads](https://developer.apple.com/news/upcoming-requirements/). One-time setup:
+
+1. Register the bundle ID (`io.github.h4zm47.cataclysmdda`, or your own passed as
+   `APP_BUNDLE_ID`) under *Certificates, Identifiers & Profiles → Identifiers*, then create the
+   app in App Store Connect (*Apps → + → New App*) with that bundle ID.
+2. Either sign in to Xcode with an Apple ID on the team (*Xcode → Settings → Accounts*), or
+   create an App Store Connect API key (*Users and Access → Integrations*) and pass it as
+   `ASC_KEY_PATH`, `ASC_KEY_ID` and `ASC_ISSUER_ID`.
+
+Then, with your team ID from *Membership details*:
+
+```sh
+APP_DEVELOPMENT_TEAM=ABCDE12345 scripts/testflight.sh
+```
+
+Each build gets the UTC date and time as its build number (`YYYYMMDD.HHMM`), so every upload
+is higher than the last; set `BUILD_NUMBER` to override it. `TESTFLIGHT_INTERNAL_ONLY=1` limits
+the build to internal testers, and `TESTFLIGHT_EXPORT_ONLY=1` writes a signed IPA to `dist/`
+for Transporter instead of uploading. Once App Store Connect has processed the build, add
+testers under *TestFlight*; external testers need Beta App Review first.
+
+The app carries a privacy manifest, `ios/resources/PrivacyInfo.xcprivacy`, which App Store
+Connect requires. It declares the file-timestamp and system-boot-time APIs that the game and
+SDL use; update it if new code uses other
+[required reason APIs](https://developer.apple.com/documentation/bundleresources/describing-use-of-required-reason-api).
 
 ### Testing
 

@@ -62,20 +62,7 @@ if gh release view "$TAG" ${gh_args[@]+"${gh_args[@]}"} >/dev/null 2>&1; then
 fi
 
 if [[ -z "$IPA" ]]; then
-    if [[ ! -d cdda/.git ]]; then
-        scripts/fetch-cdda.sh
-    fi
-    # ./cdda must carry exactly the patch series of this commit.
-    exported="$(mktemp -d)"
-    trap 'rm -rf "$exported"' EXIT
-    git -C cdda format-patch --quiet --no-signature --zero-commit --no-numbered \
-        -o "$exported" "$CDDA_COMMIT..ios"
-    if ! diff -r -q "$exported" patches >/dev/null; then
-        echo "error: ./cdda (branch ios) does not match patches/. Run" >&2
-        echo "  scripts/export-patches.sh   to keep the changes made in ./cdda, or" >&2
-        echo "  scripts/fetch-cdda.sh --force   to rebuild ./cdda from patches/" >&2
-        exit 1
-    fi
+    scripts/prepare-cdda.sh
     if [[ ! -f deps/install/iphoneos/lib/libSDL2.a ]]; then
         scripts/build-deps.sh iphoneos
     fi
