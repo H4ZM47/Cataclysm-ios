@@ -6,7 +6,7 @@
 #
 # Expects:
 #   ../cdda               upstream checkout with patches/ applied (scripts/fetch-cdda.sh)
-#   ../deps/install/<sdk> SDL2 libraries built by scripts/build-deps.sh
+#   ../deps/install/<sdk> SDL3 libraries built by scripts/build-deps.sh
 cmake_minimum_required(VERSION 3.24)
 
 if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
@@ -33,17 +33,28 @@ else()
     set(IOS_PLATFORM iphoneos)
 endif()
 set(DEPS_PREFIX "${DEPS_INSTALL_DIR}/${IOS_PLATFORM}")
-if(NOT EXISTS "${DEPS_PREFIX}/lib/libSDL2.a")
-    message(FATAL_ERROR "SDL2 for ${IOS_PLATFORM} not found in ${DEPS_PREFIX}; run scripts/build-deps.sh ${IOS_PLATFORM}")
+if(NOT EXISTS "${DEPS_PREFIX}/lib/libSDL3.a" OR
+   NOT EXISTS "${DEPS_PREFIX}/lib/cmake/SDL3/SDL3Config.cmake")
+    message(FATAL_ERROR "SDL3 for ${IOS_PLATFORM} not found in ${DEPS_PREFIX}; run scripts/build-deps.sh ${IOS_PLATFORM}")
 endif()
 if(NOT EXISTS "${CDDA_DIR}/src/main.cpp")
     message(FATAL_ERROR "Cataclysm sources not found in ${CDDA_DIR}; run scripts/fetch-cdda.sh")
 endif()
 
+list(PREPEND CMAKE_PREFIX_PATH "${DEPS_PREFIX}")
+find_package(SDL3 3.4.0 REQUIRED CONFIG)
+foreach(_satellite SDL3_ttf SDL3_image SDL3_mixer)
+    if(NOT EXISTS "${DEPS_PREFIX}/lib/lib${_satellite}.a")
+        message(FATAL_ERROR "${_satellite} for ${IOS_PLATFORM} not found in ${DEPS_PREFIX}; run scripts/build-deps.sh ${IOS_PLATFORM}")
+    endif()
+endforeach()
+
 # Read the pinned upstream version.
 file(STRINGS "${REPO_ROOT}/cdda.env" _cdda_env REGEX "^CDDA_VERSION_STRING=")
 string(REGEX REPLACE "^CDDA_VERSION_STRING=" "" CDDA_VERSION_STRING "${_cdda_env}")
-# CFBundleShortVersionString must be numeric: 0.I-1 -> 0.9.1 (I is the 9th letter).
+# CFBundleShortVersionString must be numeric. Stable versions map 0.I-1 to
+# 0.9.1 (I is the 9th letter); experimental tags use their date and HHMM build.
+set(_default_build_number "1")
 string(REGEX MATCH "^0\\.([A-Z])(-([0-9]+))?" _ver_match "${CDDA_VERSION_STRING}")
 if(_ver_match)
     string(FIND "@ABCDEFGHIJKLMNOPQRSTUVWXYZ" "${CMAKE_MATCH_1}" _letter_index)
@@ -52,6 +63,9 @@ if(_ver_match)
         set(_point 0)
     endif()
     set(_default_marketing_version "0.${_letter_index}.${_point}")
+elseif(CDDA_VERSION_STRING MATCHES "^cdda-experimental-([0-9][0-9][0-9][0-9])-([0-9][0-9])-([0-9][0-9])-([0-9][0-9][0-9][0-9])$")
+    set(_default_marketing_version "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+    set(_default_build_number "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}${CMAKE_MATCH_3}.${CMAKE_MATCH_4}")
 else()
     set(_default_marketing_version "0.0.0")
 endif()
@@ -59,7 +73,7 @@ endif()
 set(APP_BUNDLE_ID "io.github.h4zm47.cataclysmdda" CACHE STRING "CFBundleIdentifier")
 set(APP_DEVELOPMENT_TEAM "" CACHE STRING "Apple developer team ID used for automatic signing (empty: sign manually or not at all)")
 set(APP_MARKETING_VERSION "${_default_marketing_version}" CACHE STRING "CFBundleShortVersionString")
-set(APP_BUILD_NUMBER "1" CACHE STRING "CFBundleVersion")
+set(APP_BUILD_NUMBER "${_default_build_number}" CACHE STRING "CFBundleVersion")
 option(APP_INCREASED_MEMORY_LIMIT
     "Request the increased memory limit entitlement (the signing team must have this capability)" OFF)
 
@@ -102,7 +116,6 @@ set(CDDA_INCLUDE_DIRS
     "${SRC}/third-party"
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
     "${DEPS_PREFIX}/include"
-    "${DEPS_PREFIX}/include/SDL2"
     "${DEPS_PREFIX}/include/freetype2")
 
 # Third-party code is compiled warning-free in its own static libraries.
@@ -132,15 +145,14 @@ target_compile_options(Cataclysm PRIVATE
 # Libraries
 # ---------------------------------------------------------------------------
 set(DEPS_LIBS
-    "${DEPS_PREFIX}/lib/libSDL2main.a"
-    "${DEPS_PREFIX}/lib/libSDL2_ttf.a"
-    "${DEPS_PREFIX}/lib/libSDL2_image.a"
-    "${DEPS_PREFIX}/lib/libSDL2_mixer.a")
+    "${DEPS_PREFIX}/lib/libSDL3_ttf.a"
+    "${DEPS_PREFIX}/lib/libSDL3_image.a"
+    "${DEPS_PREFIX}/lib/libSDL3_mixer.a")
 foreach(_vendored freetype harfbuzz)
     file(GLOB _vendored_lib "${DEPS_PREFIX}/lib/lib${_vendored}*.a")
     list(APPEND DEPS_LIBS ${_vendored_lib})
 endforeach()
-list(APPEND DEPS_LIBS "${DEPS_PREFIX}/lib/libSDL2.a")
+list(APPEND DEPS_LIBS SDL3::SDL3-static)
 
 target_link_libraries(Cataclysm PRIVATE
     cdda-third-party

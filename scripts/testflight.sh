@@ -81,7 +81,11 @@ fi
 
 cd "$ROOT"
 scripts/prepare-cdda.sh
-if [[ ! -f deps/install/iphoneos/lib/libSDL2.a ]]; then
+if [[ ! -f deps/install/iphoneos/lib/libSDL3.a ||
+      ! -f deps/install/iphoneos/lib/libSDL3_ttf.a ||
+      ! -f deps/install/iphoneos/lib/libSDL3_image.a ||
+      ! -f deps/install/iphoneos/lib/libSDL3_mixer.a ||
+      ! -f deps/install/iphoneos/lib/cmake/SDL3/SDL3Config.cmake ]]; then
     scripts/build-deps.sh iphoneos
 fi
 scripts/compile-translations.sh

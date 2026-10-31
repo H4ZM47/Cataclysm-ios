@@ -18,7 +18,9 @@
 #include <string>
 #include <unistd.h>
 
-#include <SDL.h>
+#define SDL_MAIN_HANDLED
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 
 namespace
 {
@@ -115,7 +117,7 @@ pixel_rect safe_area()
 
 int keyboard_overlap()
 {
-    if( !harness_window || !SDL_IsTextInputActive() ) {
+    if( !harness_window || !SDL_TextInputActive( harness_window ) ) {
         return 0;
     }
     int w = 0;
@@ -164,10 +166,9 @@ int default_font_height()
 
 } // namespace cata_ios
 
-// On iOS SDL2main provides main() and calls the game's SDL_main(); do the same.
-extern "C" int SDL_main( int argc, char **argv );
-
+// Provide the entry point wrapper normally supplied by SDL's platform main.
 int main( int argc, char **argv )
 {
+    SDL_SetMainReady();
     return SDL_main( argc, argv );
 }

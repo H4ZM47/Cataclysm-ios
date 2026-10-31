@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: cataclysm-ios <cataclysm-ios@localhost>
+Date: Sat, 31 Oct 2026 11:27:42 +0700
+Subject: [PATCH] Prune stale inventory shortcuts after inventory refactor
+
+Validate saved inventory shortcuts against the current avatar inventory when rendering the inventory touch context.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+---
+ src/sdltiles.cpp | 45 +++++++++++++++------------------------------
+ 1 file changed, 15 insertions(+), 30 deletions(-)
+
+diff --git a/src/sdltiles.cpp b/src/sdltiles.cpp
+index e89cd96..3a595b5 100644
+--- a/src/sdltiles.cpp
++++ b/src/sdltiles.cpp
+@@ -5341,36 +5341,18 @@ bool remove_expired_actions_from_quick_shortcuts( const std::string &category )
+ 
+ void remove_stale_inventory_quick_shortcuts()
+ {
+-    if( get_option<bool>( "ANDROID_INVENTORY_AUTOADD" ) ) {
+-        quick_shortcuts_t &qsl = quick_shortcuts_map["INVENTORY"];
+-        quick_shortcuts_t::iterator it = qsl.begin();
+-        bool in_inventory;
+-        int key;
+-        bool valid;
+-        while( it != qsl.end() ) {
+-            key = ( *it ).get_first_input();
+-            valid = inv_chars.valid( key );
+-            in_inventory = false;
+-            if( valid ) {
+-                Character &player_character = get_player_character();
+-                // let's check worn items first
+-                std::optional<const item *> item = player_character.worn.item_worn_with_inv_let( key );
+-                if( item ) {
+-                    in_inventory = true;
+-                }
+-                if( !in_inventory ) {
+-                    // We couldn't find it in worn items either, check weapon held
+-                    item_location wielded = player_character.get_wielded_item();
+-                    if( wielded && wielded->invlet == key ) {
+-                        in_inventory = true;
+-                    }
+-                }
+-            }
+-            if( valid && !in_inventory ) {
+-                it = qsl.erase( it );
+-            } else {
+-                ++it;
+-            }
++    if( !get_option<bool>( "ANDROID_INVENTORY_AUTOADD" ) ) {
++        return;
++    }
++
++    quick_shortcuts_t &qsl = quick_shortcuts_map["INVENTORY"];
++    const invlets_bitset allocated = get_player_character().allocated_invlets();
++    for( auto it = qsl.begin(); it != qsl.end(); ) {
++        const int key = ( *it ).get_first_input();
++        if( !inv_chars.valid( key ) || !allocated.test( static_cast<size_t>( key ) ) ) {
++            it = qsl.erase( it );
++        } else {
++            ++it;
+         }
+     }
+ }
+@@ -5446,6 +5428,9 @@ void draw_quick_shortcuts()
+     bool shortcut_right = get_option<std::string>( "ANDROID_SHORTCUT_POSITION" ) == "right";
+     std::string &category = touch_input_context.get_category();
+     bool is_default_mode = category == "DEFAULTMODE";
++    if( category == "INVENTORY" ) {
++        remove_stale_inventory_quick_shortcuts();
++    }
+     quick_shortcuts_t &qsl = quick_shortcuts_map[get_quick_shortcut_name( category )];
+     if( qsl.empty() || !touch_input_context.get_registered_manual_keys().empty() ) {
+         if( category == "DEFAULTMODE" ) {

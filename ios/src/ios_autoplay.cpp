@@ -9,7 +9,7 @@
 //   wait=<context>        wait until the game waits for input in that input
 //                         context, e.g. DEFAULTMODE for gameplay (gives up
 //                         after 10 min)
-//   text=<utf-8>          type text (one SDL_TEXTINPUT per character)
+//   text=<utf-8>          type text (one SDL_EVENT_TEXT_INPUT per character)
 //   key=<name>            press and release a key (SDL key name, e.g. Return)
 //   tap=<x>,<y>           one-finger tap at normalized window coordinates
 //   swipe=<x0>,<y0>,<x1>,<y1>  one-finger swipe
@@ -36,7 +36,7 @@
 #include <vector>
 #include <sys/stat.h>
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 namespace
 {
@@ -50,7 +50,7 @@ struct autoplay_step {
 std::vector<autoplay_step> steps;
 size_t next_step = 0;
 SDL_TimerID timer_id = 0;
-Uint32 game_window_id = 0;
+SDL_WindowID game_window_id = 0;
 std::string screenshot_dir;
 
 std::mutex screenshot_mutex;
@@ -59,18 +59,18 @@ std::string pending_screenshot;
 std::atomic<bool> keyboard_toggle_requested{ false };
 
 // Updated by the game loop on every presented frame.
-std::atomic<Uint32> last_frame_tick{ 0 };
+std::atomic<Uint64> last_frame_tick{ 0 };
 std::atomic<Uint32> frame_count{ 0 };
-Uint32 idle_wait_started = 0;
+Uint64 idle_wait_started = 0;
 constexpr Uint32 idle_poll_ms = 250;
-constexpr Uint32 idle_give_up_ms = 10 * 60 * 1000;
+constexpr Uint64 idle_give_up_ms = 10 * 60 * 1000;
 
 // The input context the game currently waits in, and since when.
 std::mutex context_mutex;
 std::string current_context;
-Uint32 context_since = 0;
-constexpr Uint32 context_settle_ms = 1500;
-constexpr Uint32 debug_message_settle_ms = 500;
+Uint64 context_since = 0;
+constexpr Uint64 context_settle_ms = 1500;
+constexpr Uint64 debug_message_settle_ms = 500;
 
 // Touches synthesized here use IDs far from real UITouch addresses.
 SDL_FingerID next_finger_id = 0x7ac0;
@@ -86,37 +86,37 @@ std::vector<float> parse_floats( const std::string &text )
     return values;
 }
 
-Uint32 window_id()
+SDL_WindowID window_id()
 {
     return game_window_id;
 }
 
-void push_finger( Uint32 type, SDL_FingerID finger, float x, float y )
+void push_finger( SDL_EventType type, SDL_FingerID finger, float x, float y )
 {
     SDL_Event event;
     SDL_zero( event );
     event.type = type;
     event.tfinger.timestamp = SDL_GetTicks();
-    event.tfinger.touchId = 1;
-    event.tfinger.fingerId = finger;
+    event.tfinger.touchID = 1;
+    event.tfinger.fingerID = finger;
     event.tfinger.x = x;
     event.tfinger.y = y;
-    event.tfinger.pressure = type == SDL_FINGERUP ? 0.0f : 1.0f;
+    event.tfinger.pressure = type == SDL_EVENT_FINGER_UP ? 0.0f : 1.0f;
     event.tfinger.windowID = window_id();
     SDL_PushEvent( &event );
 }
 
 void push_key( SDL_Keycode key )
 {
-    for( Uint32 type : { SDL_KEYDOWN, SDL_KEYUP } ) {
+    for( SDL_EventType type : { SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP } ) {
         SDL_Event event;
         SDL_zero( event );
         event.type = type;
         event.key.timestamp = SDL_GetTicks();
         event.key.windowID = window_id();
-        event.key.state = type == SDL_KEYDOWN ? SDL_PRESSED : SDL_RELEASED;
-        event.key.keysym.sym = key;
-        event.key.keysym.scancode = SDL_GetScancodeFromKey( key );
+        event.key.down = type == SDL_EVENT_KEY_DOWN;
+        event.key.key = key;
+        event.key.scancode = SDL_GetScancodeFromKey( key, nullptr );
         SDL_PushEvent( &event );
     }
 }
@@ -137,7 +137,7 @@ void push_text( const std::string &text )
         }
         SDL_Event event;
         SDL_zero( event );
-        event.type = SDL_TEXTINPUT;
+        event.type = SDL_EVENT_TEXT_INPUT;
         event.text.timestamp = SDL_GetTicks();
         event.text.windowID = window_id();
         const std::string ch = text.substr( i, len );
@@ -152,7 +152,7 @@ void push_wakeup()
 {
     SDL_Event event;
     SDL_zero( event );
-    event.type = SDL_USEREVENT;
+    event.type = SDL_EVENT_USER;
     SDL_PushEvent( &event );
 }
 
@@ -172,24 +172,24 @@ void run_step( const autoplay_step &step )
         const std::vector<float> p = parse_floats( step.arg );
         if( p.size() >= 2 ) {
             const SDL_FingerID first = next_finger_id++;
-            push_finger( SDL_FINGERDOWN, first, p[0], p[1] );
+            push_finger( SDL_EVENT_FINGER_DOWN, first, p[0], p[1] );
             if( step.action == "tap2" ) {
                 const SDL_FingerID second = next_finger_id++;
-                push_finger( SDL_FINGERDOWN, second, p[0] + 0.05f, p[1] );
-                push_finger( SDL_FINGERUP, second, p[0] + 0.05f, p[1] );
+                push_finger( SDL_EVENT_FINGER_DOWN, second, p[0] + 0.05f, p[1] );
+                push_finger( SDL_EVENT_FINGER_UP, second, p[0] + 0.05f, p[1] );
             }
-            push_finger( SDL_FINGERUP, first, p[0], p[1] );
+            push_finger( SDL_EVENT_FINGER_UP, first, p[0], p[1] );
         }
     } else if( step.action == "swipe" ) {
         const std::vector<float> p = parse_floats( step.arg );
         if( p.size() >= 4 ) {
             const SDL_FingerID finger = next_finger_id++;
-            push_finger( SDL_FINGERDOWN, finger, p[0], p[1] );
+            push_finger( SDL_EVENT_FINGER_DOWN, finger, p[0], p[1] );
             for( int i = 1; i <= 4; ++i ) {
                 const float t = i / 4.0f;
-                push_finger( SDL_FINGERMOTION, finger, p[0] + ( p[2] - p[0] ) * t, p[1] + ( p[3] - p[1] ) * t );
+                push_finger( SDL_EVENT_FINGER_MOTION, finger, p[0] + ( p[2] - p[0] ) * t, p[1] + ( p[3] - p[1] ) * t );
             }
-            push_finger( SDL_FINGERUP, finger, p[2], p[3] );
+            push_finger( SDL_EVENT_FINGER_UP, finger, p[2], p[3] );
         }
     } else if( step.action == "shot" ) {
         mkdir( screenshot_dir.c_str(), 0755 );
@@ -209,11 +209,11 @@ void run_step( const autoplay_step &step )
 // Whether an idle step may proceed; otherwise poll again shortly.
 bool idle_reached( const autoplay_step &step )
 {
-    const Uint32 now = SDL_GetTicks();
+    const Uint64 now = SDL_GetTicks();
     if( idle_wait_started == 0 ) {
         idle_wait_started = now;
     }
-    const Uint32 wanted = static_cast<Uint32>( std::strtod( step.arg.c_str(), nullptr ) * 1000 );
+    const Uint64 wanted = static_cast<Uint64>( std::strtod( step.arg.c_str(), nullptr ) * 1000 );
     if( frame_count.load() > 0 && now - last_frame_tick.load() >= wanted ) {
         std::fprintf( stderr, "[autoplay] idle after %.1fs\n", ( now - idle_wait_started ) / 1000.0 );
         idle_wait_started = 0;
@@ -231,7 +231,7 @@ bool idle_reached( const autoplay_step &step )
 // the requested context for a moment.
 bool context_reached( const autoplay_step &step )
 {
-    const Uint32 now = SDL_GetTicks();
+    const Uint64 now = SDL_GetTicks();
     if( idle_wait_started == 0 ) {
         idle_wait_started = now;
     }
@@ -274,7 +274,7 @@ bool dismissed_debug_message()
 }
 
 // Runs on SDL's timer thread; SDL_PushEvent is thread-safe.
-Uint32 timer_callback( Uint32, void * )
+Uint32 SDLCALL timer_callback( void *, SDL_TimerID, Uint32 )
 {
     if( next_step >= steps.size() ) {
         return 0;

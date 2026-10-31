@@ -1,6 +1,6 @@
 # Builds the game for the desktop with the iOS code paths enabled (CATA_IOS)
 # and a stand-in platform layer, to develop the touch interface without a
-# device. Needs SDL2, SDL2_ttf, SDL2_image, SDL2_mixer and FreeType dev files.
+# device. Needs SDL3, SDL3_ttf, SDL3_image, SDL3_mixer and FreeType dev files.
 #
 #   cmake -S tools/linux-harness -B build/harness -G Ninja
 #   cmake --build build/harness
@@ -19,7 +19,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(SDL REQUIRED IMPORTED_TARGET sdl2 SDL2_ttf SDL2_image SDL2_mixer freetype2 zlib)
+pkg_check_modules(SDL REQUIRED IMPORTED_TARGET sdl3 SDL3_ttf SDL3_image SDL3_mixer freetype2 zlib)
 
 file(GLOB CDDA_SOURCES CONFIGURE_DEPENDS "${SRC}/*.cpp")
 file(GLOB THIRD_PARTY_SOURCES CONFIGURE_DEPENDS

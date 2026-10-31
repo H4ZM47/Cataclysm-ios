@@ -48,18 +48,18 @@ jobs:
       - name: Fetch Cataclysm source
         run: scripts/fetch-cdda.sh
 
-      - name: Restore SDL2 libraries
+      - name: Restore SDL3 libraries
         id: deps
         uses: actions/cache/restore@v4
         with:
           path: deps/install/${{ matrix.platform }}
-          key: deps-${{ matrix.platform }}-${{ runner.os }}-${{ hashFiles('scripts/build-deps.sh') }}
+          key: sdl3-deps-${{ matrix.platform }}-${{ runner.os }}-${{ hashFiles('scripts/build-deps.sh') }}
 
-      - name: Build SDL2 libraries
+      - name: Build SDL3 libraries
         if: steps.deps.outputs.cache-hit != 'true'
         run: scripts/build-deps.sh ${{ matrix.platform }}
 
-      - name: Save SDL2 libraries
+      - name: Save SDL3 libraries
         if: steps.deps.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:

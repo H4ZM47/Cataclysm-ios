@@ -5,11 +5,12 @@
 #
 # Usage: scripts/release.sh <tag> [path/to/unsigned.ipa]
 #
-#   <tag>  tag for the release, e.g. v0.I-1-ios.1. It is created on the commit
+#   <tag>  tag for the release, e.g. cdda-experimental-2026-10-30-2308-ios.1.
+#          It is created on the commit
 #          you have checked out, which must be clean and pushed.
 #   IPA    an existing unsigned IPA, e.g. one downloaded from a CI run. Without
 #          it the script builds one: it fetches and patches upstream if ./cdda
-#          is missing, builds the SDL2 libraries if needed, compiles the
+#          is missing, builds the SDL3 libraries if needed, compiles the
 #          translations, builds the device app and packages it.
 #
 # Environment:
@@ -63,7 +64,11 @@ fi
 
 if [[ -z "$IPA" ]]; then
     scripts/prepare-cdda.sh
-    if [[ ! -f deps/install/iphoneos/lib/libSDL2.a ]]; then
+    if [[ ! -f deps/install/iphoneos/lib/libSDL3.a ||
+          ! -f deps/install/iphoneos/lib/libSDL3_ttf.a ||
+          ! -f deps/install/iphoneos/lib/libSDL3_image.a ||
+          ! -f deps/install/iphoneos/lib/libSDL3_mixer.a ||
+          ! -f deps/install/iphoneos/lib/cmake/SDL3/SDL3Config.cmake ]]; then
         scripts/build-deps.sh iphoneos
     fi
     scripts/compile-translations.sh

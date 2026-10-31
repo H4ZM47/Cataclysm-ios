@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Build the SDL2 libraries Cataclysm needs as static libraries for iOS.
+# Build the SDL3 libraries Cataclysm needs as static libraries for iOS.
 #
 # Usage: scripts/build-deps.sh [iphoneos|iphonesimulator]...
 #   (default: both)
 #
 # Output: deps/install/<platform>/{include,lib}
-#   lib: libSDL2.a libSDL2main.a libSDL2_ttf.a libSDL2_image.a libSDL2_mixer.a
-#        plus the vendored freetype/harfbuzz archives built by SDL2_ttf
-#   include: SDL2/*.h and freetype2/ (used by Dear ImGui's FreeType backend)
+#   lib: libSDL3.a libSDL3_ttf.a libSDL3_image.a libSDL3_mixer.a
+#        plus the vendored freetype/harfbuzz archives built by SDL3_ttf
+#   include: SDL3/*.h and freetype2/ (used by Dear ImGui's FreeType backend)
 #
 # Requires macOS with Xcode and CMake.
 set -euo pipefail
@@ -20,10 +20,10 @@ INSTALL="$DEPS/install"
 
 IOS_DEPLOYMENT_TARGET="${IOS_DEPLOYMENT_TARGET:-15.0}"
 
-SDL2_VERSION=2.32.10
-SDL2_TTF_VERSION=2.24.0
-SDL2_IMAGE_VERSION=2.8.12
-SDL2_MIXER_VERSION=2.8.2
+SDL3_VERSION=3.4.0
+SDL3_TTF_VERSION=3.2.2
+SDL3_IMAGE_VERSION=3.2.4
+SDL3_MIXER_VERSION=3.2.0
 
 platforms=("$@")
 if (( ${#platforms[@]} == 0 )); then
@@ -52,10 +52,10 @@ fetch() {
 }
 
 mkdir -p "$SRC"
-SDL2_SRC="$(fetch SDL "release-$SDL2_VERSION")"
-TTF_SRC="$(fetch SDL_ttf "release-$SDL2_TTF_VERSION" recursive)"
-IMAGE_SRC="$(fetch SDL_image "release-$SDL2_IMAGE_VERSION")"
-MIXER_SRC="$(fetch SDL_mixer "release-$SDL2_MIXER_VERSION")"
+SDL3_SRC="$(fetch SDL "release-$SDL3_VERSION")"
+TTF_SRC="$(fetch SDL_ttf "release-$SDL3_TTF_VERSION" recursive)"
+IMAGE_SRC="$(fetch SDL_image "release-$SDL3_IMAGE_VERSION")"
+MIXER_SRC="$(fetch SDL_mixer "release-$SDL3_MIXER_VERSION")"
 
 build_one() {
     local platform="$1" name="$2" src="$3"
@@ -82,7 +82,7 @@ build_one() {
         -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
         -DBUILD_SHARED_LIBS=OFF \
         -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-        -DSDL2_DIR="$prefix/lib/cmake/SDL2" \
+        -DSDL3_DIR="$prefix/lib/cmake/SDL3" \
         "$@" >"$BUILD/$platform-$name-configure.log" 2>&1 \
         || { cat "$BUILD/$platform-$name-configure.log"; return 1; }
     cmake --build "$bdir" --config Release --parallel "$JOBS"
@@ -93,27 +93,28 @@ for platform in "${platforms[@]}"; do
     mkdir -p "$BUILD/$platform"
     prefix="$INSTALL/$platform"
 
-    build_one "$platform" SDL2 "$SDL2_SRC" \
-        -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST=OFF -DSDL2_DISABLE_SDL2MAIN=OFF
+    build_one "$platform" SDL3 "$SDL3_SRC" \
+        -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST_LIBRARY=OFF -DSDL_INSTALL=ON
 
-    build_one "$platform" SDL2_ttf "$TTF_SRC" \
-        -DSDL2TTF_VENDORED=ON -DSDL2TTF_HARFBUZZ=ON -DSDL2TTF_SAMPLES=OFF \
-        -DSDL2TTF_INSTALL=ON
+    build_one "$platform" SDL3_ttf "$TTF_SRC" \
+        -DSDLTTF_VENDORED=ON -DSDLTTF_HARFBUZZ=ON -DSDLTTF_PLUTOSVG=OFF -DSDLTTF_INSTALL=ON \
+        -DSDLTTF_SAMPLES=OFF
 
-    build_one "$platform" SDL2_image "$IMAGE_SRC" \
-        -DSDL2IMAGE_VENDORED=OFF -DSDL2IMAGE_SAMPLES=OFF -DSDL2IMAGE_TESTS=OFF \
-        -DSDL2IMAGE_BACKEND_IMAGEIO=OFF -DSDL2IMAGE_BACKEND_STB=ON \
-        -DSDL2IMAGE_AVIF=OFF -DSDL2IMAGE_JXL=OFF -DSDL2IMAGE_TIF=OFF -DSDL2IMAGE_WEBP=OFF
+    build_one "$platform" SDL3_image "$IMAGE_SRC" \
+        -DSDLIMAGE_VENDORED=OFF -DSDLIMAGE_INSTALL=ON -DSDLIMAGE_SAMPLES=OFF -DSDLIMAGE_TESTS=OFF \
+        -DSDLIMAGE_BACKEND_IMAGEIO=OFF -DSDLIMAGE_BACKEND_STB=ON \
+        -DSDLIMAGE_AVIF=OFF -DSDLIMAGE_JXL=OFF -DSDLIMAGE_TIF=OFF -DSDLIMAGE_WEBP=OFF
 
-    build_one "$platform" SDL2_mixer "$MIXER_SRC" \
-        -DSDL2MIXER_VENDORED=OFF -DSDL2MIXER_SAMPLES=OFF \
-        -DSDL2MIXER_VORBIS=STB -DSDL2MIXER_OPUS=OFF -DSDL2MIXER_MOD=OFF \
-        -DSDL2MIXER_MIDI=OFF -DSDL2MIXER_FLAC=ON -DSDL2MIXER_FLAC_DRFLAC=ON \
-        -DSDL2MIXER_MP3=ON -DSDL2MIXER_MP3_MINIMP3=ON -DSDL2MIXER_WAVPACK=OFF \
-        -DSDL2MIXER_GME=OFF
+    build_one "$platform" SDL3_mixer "$MIXER_SRC" \
+        -DSDLMIXER_VENDORED=OFF -DSDLMIXER_INSTALL=ON -DSDLMIXER_EXAMPLES=OFF -DSDLMIXER_TESTS=OFF \
+        -DSDLMIXER_VORBIS_STB=ON -DSDLMIXER_VORBIS_VORBISFILE=OFF \
+        -DSDLMIXER_OPUS=OFF -DSDLMIXER_MOD=OFF -DSDLMIXER_MIDI=OFF \
+        -DSDLMIXER_FLAC=ON -DSDLMIXER_FLAC_LIBFLAC=OFF -DSDLMIXER_FLAC_DRFLAC=ON \
+        -DSDLMIXER_MP3=ON -DSDLMIXER_MP3_DRMP3=ON -DSDLMIXER_MP3_MPG123=OFF \
+        -DSDLMIXER_WAVPACK=OFF -DSDLMIXER_GME=OFF
 
     # Dear ImGui's FreeType rasterizer includes <ft2build.h>; reuse the
-    # FreeType that SDL2_ttf vendors so both link against the same library.
+    # FreeType that SDL3_ttf vendors so both link against the same library.
     rm -rf "$prefix/include/freetype2"
     mkdir -p "$prefix/include/freetype2"
     cp -R "$TTF_SRC/external/freetype/include/." "$prefix/include/freetype2/"
@@ -122,7 +123,7 @@ for platform in "${platforms[@]}"; do
     # copy them out of the build tree so the app can link them.
     while IFS= read -r -d '' lib; do
         cp -f "$lib" "$prefix/lib/"
-    done < <(find "$BUILD/$platform/SDL2_ttf" -name 'lib*.a' -print0)
+    done < <(find "$BUILD/$platform/SDL3_ttf" -name 'lib*.a' -print0)
 
     echo "==> $platform libraries:"
     ls -1 "$prefix/lib"/*.a

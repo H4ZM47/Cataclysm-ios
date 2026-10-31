@@ -11,10 +11,10 @@ this repository holds only the iOS build system, a small patch series and the iO
 
 | | |
 |---|---|
-| Game version | **0.I-1** stable (upstream tag [`0.I-1`](https://github.com/CleverRaven/Cataclysm-DDA/tree/0.I-1)) |
+| Game version | **cdda-experimental-2026-10-30-2308** (upstream tag [`cdda-experimental-2026-10-30-2308`](https://github.com/CleverRaven/Cataclysm-DDA/tree/cdda-experimental-2026-10-30-2308)) |
 | Devices | iPhone and iPad, arm64, iOS/iPadOS 15 or later, landscape |
 | Graphics | Tilesets and ASCII, all upstream tilesets included |
-| Sound | Supported (SDL2_mixer); add soundpacks yourself, see below |
+| Sound | Supported (SDL3_mixer); add soundpacks yourself, see below |
 | Languages | All upstream translations |
 
 ## Installing
@@ -24,7 +24,7 @@ There is no App Store release. Install the app with your own Apple ID:
 1. Download the unsigned IPA from the [Releases](../../releases) page, or the
    **Cataclysm-unsigned-ipa** artifact from a successful run of the
    [iOS workflow](../../actions/workflows/ios.yml) (unzip it to get
-   `Cataclysm-0.I-1-unsigned.ipa`).
+   `Cataclysm-cdda-experimental-2026-10-30-2308-unsigned.ipa`).
 2. Sign and install it with a sideloading tool such as [AltStore](https://altstore.io/) or
    [Sideloadly](https://sideloadly.io/). With a free Apple ID the signature lasts 7 days,
    after which the tool has to refresh it; your saves are kept.
@@ -82,8 +82,8 @@ under *On My iPhone/iPad → Cataclysm* and in Finder when the device is connect
 | `sound/` | Soundpacks, e.g. [CDDA-Soundpack](https://github.com/Fris0uman/CDDA-Soundpack) |
 | `memorial/`, `achievements/` | Graveyard and achievements |
 
-To move a game between devices or to and from desktop Cataclysm 0.I, copy the world folder
-in `save/`.
+To move a game between devices or to and from desktop Cataclysm built from the same upstream
+revision, copy the world folder in `save/`.
 
 iOS can stop an app in the background at any time, so save before switching away. Settings →
 Touch → *Quicksave on app lose focus* saves automatically when the app goes to the background;
@@ -95,8 +95,8 @@ Requirements: a Mac with Xcode 15 or later, CMake 3.24 or later, and optionally 
 (`brew install cmake gettext`) for translations.
 
 ```sh
-scripts/fetch-cdda.sh                 # clone upstream 0.I-1 into ./cdda and apply patches/
-scripts/build-deps.sh                 # SDL2, SDL2_ttf, SDL2_image, SDL2_mixer for iOS
+scripts/fetch-cdda.sh                 # clone upstream cdda-experimental-2026-10-30-2308 into ./cdda and apply patches/
+scripts/build-deps.sh                 # SDL3, SDL3_ttf, SDL3_image, SDL3_mixer for iOS
 scripts/compile-translations.sh       # optional: lang/*.po -> lang/mo
 scripts/build-app.sh iphoneos         # or: iphonesimulator
 scripts/package-ipa.sh                # unsigned IPA in dist/
@@ -124,7 +124,7 @@ files.
 |---|---|
 | `cdda.env` | Upstream repository, tag and commit the port is built from |
 | `patches/` | Changes to upstream sources, applied as commits on branch `ios` of `./cdda` |
-| `ios/CMakeLists.txt` | Xcode project: game sources, SDL2 libraries, app bundle, game data |
+| `ios/CMakeLists.txt` | Xcode project: game sources, SDL3 libraries, app bundle, game data |
 | `ios/src/ios_platform.mm` | iOS platform layer: paths, safe area, keyboard, haptics, keyboard button |
 | `ios/src/ios_autoplay.cpp` | Scripted input for automated tests |
 | `ios/scripts/copy-game-data.sh` | Build phase that copies `data/`, `gfx/` and translations into the app |
@@ -135,7 +135,7 @@ files.
 
 ### How the port works
 
-Upstream already runs on Android through SDL2, and most of what a phone needs lives behind
+Upstream already runs on Android through SDL3, and most of what a phone needs lives behind
 `#if defined(__ANDROID__)`. The patch adds a `CATA_IOS` build flag and turns on the same touch
 interface for it, replacing the few Android Java calls with the iOS platform layer. On top of
 that it:
@@ -163,9 +163,9 @@ and tag on the current commit with the GitHub CLI:
 
 ```sh
 gh auth login                                  # once
-scripts/release.sh v0.I-1-ios.1                # build and publish
-scripts/release.sh v0.I-1-ios.1 path/to.ipa    # publish an IPA you already have
-RELEASE_DRAFT=1 scripts/release.sh v0.I-1-ios.1   # create a draft to review first
+scripts/release.sh cdda-experimental-2026-10-30-2308-ios.1             # build and publish
+scripts/release.sh cdda-experimental-2026-10-30-2308-ios.1 path/to.ipa # publish an IPA you already have
+RELEASE_DRAFT=1 scripts/release.sh cdda-experimental-2026-10-30-2308-ios.1
 ```
 
 The commit must be clean and pushed, and `./cdda` must match `patches/`.
@@ -227,6 +227,6 @@ CATA_AUTOPLAY="idle=8;shot=menu" tools/linux-harness/run.sh --headless   # under
 Cataclysm: Dark Days Ahead is licensed under
 [CC BY-SA 3.0](https://creativecommons.org/licenses/by-sa/3.0/) with some third-party parts under
 their own licenses; see upstream's
-[LICENSE.txt](https://github.com/CleverRaven/Cataclysm-DDA/blob/0.I-1/LICENSE.txt). The
+[LICENSE.txt](https://github.com/CleverRaven/Cataclysm-DDA/blob/cdda-experimental-2026-10-30-2308/LICENSE.txt). The
 patches and the rest of this repository are released under the same CC BY-SA 3.0 license.
-SDL2 and its satellite libraries are under the [zlib license](https://www.libsdl.org/license.php).
+SDL3 and its satellite libraries are under the [zlib license](https://www.libsdl.org/license.php).

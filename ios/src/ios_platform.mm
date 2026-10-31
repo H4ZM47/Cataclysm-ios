@@ -15,8 +15,7 @@
 #include <cstring>
 #include <sys/utsname.h>
 
-#include <SDL.h>
-#include <SDL_syswm.h>
+#include <SDL3/SDL.h>
 
 @interface CataIOSOverlay : NSObject
 @property( nonatomic, weak ) UIWindow *window;
@@ -306,10 +305,11 @@ float display_scale()
 void attach_window( SDL_Window *window )
 {
     sdl_window = window;
-    SDL_SysWMinfo info;
-    SDL_VERSION( &info.version );
-    if( SDL_GetWindowWMInfo( window, &info ) && info.subsystem == SDL_SYSWM_UIKIT ) {
-        overlay().window = info.info.uikit.window;
+    const SDL_PropertiesID properties = SDL_GetWindowProperties( window );
+    UIWindow *native_window = (__bridge UIWindow *)SDL_GetPointerProperty(
+                                  properties, SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, nullptr );
+    if( native_window ) {
+        overlay().window = native_window;
         [overlay() installKeyboardButton];
     }
 }
